@@ -95,17 +95,17 @@ def parse_data_possivel(valor):
     if pd.isna(valor):
         return None
     try:
-        # Caso Excel leia como número de data (serial)
+        # Se for número (Excel serial)
         if isinstance(valor, (int, float)):
             return datetime.fromordinal(datetime(1900, 1, 1).toordinal() + int(valor) - 2)
-        # Caso texto com ano de 2 dígitos
+        # Se for texto
         for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
             try:
                 return datetime.strptime(str(valor).strip(), fmt)
             except ValueError:
                 continue
         return None
-    except Exception:
+    except:
         return None
 
 
@@ -234,9 +234,24 @@ def pagina_relatorio():
     st.subheader("📄 Relatório de Peças Vencidas")
     df = carregar_dados()
     hoje = datetime.today()
-    vencidas = df[df["DATA_FIM"].apply(lambda x: parse_data_possivel(x) and parse_data_possivel(x).date() < hoje.date())]
+
+    # Cria coluna auxiliar com datas convertidas
+    df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
+
+    # Filtra contratos vencidos
+    vencidas = df[df["DATA_FIM_DT"].notna() & (df["DATA_FIM_DT"].dt.date < hoje.date())]
+
+    if vencidas.empty:
+        st.info("Nenhum contrato vencido.")
+        return
+
     st.dataframe(vencidas)
-    st.download_button("⬇️ Baixar Relatório", vencidas.to_csv(index=False).encode("utf-8"), "relatorio.csv", "text/csv")
+    st.download_button(
+        "⬇️ Baixar Relatório",
+        vencidas.to_csv(index=False).encode("utf-8"),
+        "relatorio.csv",
+        "text/csv"
+    )
 
 # =========================
 # MENU PRINCIPAL
