@@ -210,7 +210,7 @@ def pagina_visualizar_tudo():
     proximos_7dias = hoje + timedelta(days=7)
 
     def cor_linha(row):
-        if row["DATA_FIM_DT"] is None:
+        if pd.isna(row["DATA_FIM_DT"]):
             return [""]*len(row)
         if row["DATA_FIM_DT"].date() < hoje.date():
             return ["background-color: #f8d7da"]*len(row)
@@ -219,9 +219,10 @@ def pagina_visualizar_tudo():
         else:
             return ["background-color: #d4edda"]*len(row)
 
-    df_mostrar = df.drop(columns=["DATA_FIM_DT"], errors='ignore')
-    st.dataframe(df_mostrar.style.apply(cor_linha, axis=1))
-
+    # Mantém a coluna DATA_FIM_DT só para o estilo
+    st.dataframe(
+        df.style.apply(cor_linha, axis=1).hide_columns(["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"])
+    )
 # =========================
 # RELATÓRIO
 # =========================
