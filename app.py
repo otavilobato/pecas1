@@ -219,10 +219,12 @@ def pagina_visualizar_tudo():
         else:
             return ["background-color: #d4edda"]*len(row)
 
-    # Mantém a coluna DATA_FIM_DT só para o estilo
-    st.dataframe(
-        df.style.apply(cor_linha, axis=1).hide_columns(["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"])
-    )
+    # Cria uma cópia apenas para exibir (sem colunas técnicas)
+    df_mostrar = df.drop(columns=["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"], errors='ignore')
+
+    # Aplica o estilo usando o DataFrame original (df), mas mostra df_mostrar
+    styled = df_mostrar.style.apply(lambda r: cor_linha(df.iloc[r.name]), axis=1)
+    st.dataframe(styled)
 # =========================
 # RELATÓRIO
 # =========================
