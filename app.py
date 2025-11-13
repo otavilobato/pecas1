@@ -205,14 +205,14 @@ def pagina_visualizar_tudo():
         st.info("Nenhum registro encontrado.")
         return
 
-    # Cria uma cópia do DataFrame para mostrar, sem colunas técnicas
+    # Remover colunas técnicas
     colunas_ocultar = ["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"]
     df_mostrar = df.drop(columns=[c for c in colunas_ocultar if c in df.columns])
 
-    # Mostra o DataFrame completo sem erros
+    # Exibir DataFrame limpo
     st.dataframe(df_mostrar)
 
-    # Botão para baixar o arquivo (CSV ou TXT)
+    # Botão para baixar arquivo em CSV ou TXT
     formato = st.radio("Escolha o formato do relatório", ["CSV", "TXT"])
     if formato == "CSV":
         st.download_button(
