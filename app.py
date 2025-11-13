@@ -94,7 +94,6 @@ def tentar_login():
     if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
         st.session_state["usuario"] = usuario
         st.success("Login realizado com sucesso!")
-        st.experimental_rerun()
     else:
         st.error("Usuário ou senha incorretos.")
 
@@ -207,14 +206,13 @@ def pagina_visualizar_tudo():
         st.info("Nenhum registro encontrado.")
         return
 
-    # Remover colunas técnicas
-    colunas_ocultar = ["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"]
-    df_mostrar = df.drop(columns=[c for c in colunas_ocultar if c in df.columns])
+    hoje = datetime.today()
+    proximos_7dias = hoje + timedelta(days=7)
+    df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
 
-    # Exibir DataFrame limpo
+    df_mostrar = df.drop(columns=["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"], errors='ignore')
     st.dataframe(df_mostrar)
 
-    # Botão para baixar arquivo em CSV ou TXT
     formato = st.radio("Escolha o formato do relatório", ["CSV", "TXT"])
     if formato == "CSV":
         st.download_button(
@@ -283,7 +281,6 @@ def main_page():
     elif escolha == "Sair":
         st.session_state.clear()
         st.info("Você saiu. Atualize a página para fazer login novamente.")
-        # NÃO usar st.experimental_rerun() aqui, evita erro de logout
 
 # =========================
 # APP
