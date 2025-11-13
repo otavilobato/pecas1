@@ -1,159 +1,222 @@
 import streamlit as st
 import pandas as pd
+import hashlib
+from datetime import datetime
 import io
 import requests
-from datetime import datetime
+import base64
+import os
 
-# 🔧 URL da planilha hospedada no GitHub
-GITHUB_FILE_URL = "https://github.com/otavilobato/pecas1/raw/refs/heads/main/SALDO_PECAS.xlsx"
+# =========================
+# CONFIGURAÇÃO
+# =========================
+# URL da planilha Excel no GitHub (exemplo)
+EXCEL_URL = "https://raw.githubusercontent.com/seu_usuario/seu_repo/main/SALDO_PECAS.xlsx"
+EXCEL_API = "https://api.github.com/repos/seu_usuario/seu_repo/contents/SALDO_PECAS.xlsx"
+EXCEL_ARQUIVO = "SALDO_PECAS.xlsx"
 
-# 🔑 Função para carregar token do GitHub com segurança
-def get_github_token():
-    try:
-        return st.secrets["GITHUB_TOKEN"]
-    except Exception:
-        return None
+USUARIOS = {
+    "olobato": hashlib.sha256("9410".encode()).hexdigest(),
+    "gladeira": hashlib.sha256("0002".encode()).hexdigest()
+}
 
-# 📥 Função para carregar a planilha
+# =========================
+# FUNÇÕES AUXILIARES
+# =========================
+@st.cache_data(ttl=60)
 def carregar_dados():
-    try:
-        r = requests.get(GITHUB_FILE_URL)
-        if r.status_code == 200:
-            try:
-                df = pd.read_excel(io.BytesIO(r.content))
-                if df.empty:
-                    st.warning("⚠️ A planilha está vazia, será criado um modelo padrão.")
-                    df = pd.DataFrame(columns=[
-                        "UF","FRU","SUB1","SUB2","SUB3","DESCRICAO",
-                        "MAQUINAS","CLIENTES","DATA_FIM","SLA",
-                        "DATA_VERIFICACAO","STATUS"
-                    ])
-                return df
-            except Exception as e:
-                st.error(f"Erro ao ler planilha: {e}")
-                return pd.DataFrame()
-        else:
-            st.error("❌ Não foi possível carregar a planilha do GitHub.")
-            return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Erro ao carregar planilha: {e}")
+    r = requests.get(EXCEL_URL)
+    if r.status_code == 200:
+        return pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
+    else:
+        st.error("Não foi possível carregar a planilha do GitHub.")
         return pd.DataFrame()
 
-# 💾 Função para salvar os dados de volta no GitHub
 def salvar_dados(df):
-    github_token = get_github_token()
-    if not github_token:
-        st.error("❌ Token do GitHub não configurado. Adicione em Secrets ou variável de ambiente.")
-        return
-
+    """
+    Salva os dados de volta no GitHub, usando o token de acesso pessoal.
+    O token deve estar definido em st.secrets["GITHUB_TOKEN"] ou como variável de ambiente.
+    """
     try:
-        # Gera o conteúdo Excel em memória
+        # Obtém token de forma segura
+        github_token = st.secrets.get("GITHUB_TOKEN", os.getenv("GITHUB_TOKEN"))
+        if not github_token:
+            st.error("❌ Token do GitHub não configurado. Adicione em Secrets ou variável de ambiente.")
+            return None
+
+        # Converte o DataFrame para Excel em memória
         output = io.BytesIO()
-        df.to_excel(output, index=False)
-        output.seek(0)
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name="PRINCIPAL", index=False)
+        content = output.getvalue()
 
-        # Faz upload via API do GitHub
-        repo = "otavilobato/pecas1"
-        path = "SALDO_PECAS.xlsx"
-        url = f"https://api.github.com/repos/{repo}/contents/{path}"
+        # Codifica em base64 para envio pela API
+        encoded_content = base64.b64encode(content).decode("utf-8")
 
-        # Obtém hash SHA do arquivo existente (necessário para PUT)
-        r_get = requests.get(url, headers={"Authorization": f"token {github_token}"})
-        sha = r_get.json().get("sha")
+        # Verifica o SHA do arquivo atual (necessário para atualizar)
+        headers = {"Authorization": f"token {github_token}"}
+        resp_get = requests.get(EXCEL_API, headers=headers)
+        sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
 
+        # Envia o novo conteúdo para o GitHub
+        commit_message = f"Atualização automática via Streamlit ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
         data = {
-            "message": "Atualização automática via Streamlit",
-            "content": output.getvalue().decode("latin1").encode("base64").decode(),
+            "message": commit_message,
+            "content": encoded_content,
             "sha": sha
         }
+        resp_put = requests.put(EXCEL_API, headers=headers, json=data)
 
-        r_put = requests.put(url, headers={
-            "Authorization": f"token {github_token}"
-        }, json=data)
-
-        if r_put.status_code in [200, 201]:
-            st.success("✅ Planilha atualizada com sucesso no GitHub!")
+        if resp_put.status_code in (200, 201):
+            st.success("✅ Alterações salvas no GitHub com sucesso!")
         else:
-            st.error(f"Erro ao salvar no GitHub: {r_put.text}")
+            st.error(f"Erro ao salvar no GitHub: {resp_put.status_code}")
+            st.text(resp_put.text)
+
     except Exception as e:
-        st.error(f"Erro ao salvar dados: {e}")
+        st.error(f"Erro ao tentar salvar: {e}")
+        return None
 
-# 🧾 Página de cadastro
-def pagina_cadastro(df):
-    st.header("📋 Cadastro de Peças / Contratos")
+def parse_data_possivel(valor):
+    if isinstance(valor, datetime):
+        return valor
+    try:
+        return datetime.strptime(str(valor), "%d/%m/%Y")
+    except:
+        try:
+            return datetime.strptime(str(valor), "%d/%m/%y")
+        except:
+            return None
 
-    uf = st.text_input("UF")
-    fru = st.text_input("FRU")
+# =========================
+# LOGIN
+# =========================
+def login_page():
+    st.title("🔐 Login")
+    usuario = st.text_input("Usuário")
+    senha = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        senha_hash = hashlib.sha256(senha.encode()).hexdigest()
+        if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
+            st.session_state["usuario"] = usuario
+            st.success("Login realizado com sucesso!")
+            st.rerun()
+        else:
+            st.error("Usuário ou senha incorretos.")
+
+# =========================
+# CADASTRO DE PEÇAS
+# =========================
+def pagina_cadastro():
+    st.subheader("🧩 Cadastro de Peças")
+
+    df = carregar_dados()
+
+    uf = st.selectbox("UF", ["", "AM","BA","CE","DF","GO","MA","MG","PA","PE","RJ","TO"])
+    fru = st.text_input("FRU (7 caracteres)")
     sub1 = st.text_input("SUB1")
     sub2 = st.text_input("SUB2")
     sub3 = st.text_input("SUB3")
     descricao = st.text_input("Descrição")
     maquinas = st.text_input("Máquinas")
     clientes = st.text_input("Clientes")
-    data_contrato = st.date_input("Data Fim de Contrato")
+    serial = st.text_input("Serial")
+    data_contrato = st.date_input("Data do Contrato")
     sla = st.text_input("SLA")
-    data_verificacao = datetime.now().strftime("%d/%m/%y")
-    status = st.selectbox("Status", ["ATIVO", "INATIVO", "VENCIDO"])
 
-    if st.button("Salvar Registro"):
-        novo = pd.DataFrame([{
-            "UF": uf,
-            "FRU": fru,
-            "SUB1": sub1,
-            "SUB2": sub2,
-            "SUB3": sub3,
-            "DESCRICAO": descricao,
-            "MAQUINAS": maquinas,
-            "CLIENTES": clientes,
-            "DATA_FIM": data_contrato.strftime("%d/%m/%y"),
-            "SLA": sla,
-            "DATA_VERIFICACAO": data_verificacao,
-            "STATUS": status
-        }])
+    if st.button("💾 Salvar Peça"):
+        if not uf or not fru or not serial or not data_contrato:
+            st.error("Campos UF, FRU, SERIAL e Data são obrigatórios.")
+        elif len(fru) != 7:
+            st.error("FRU deve ter 7 caracteres.")
+        else:
+            nova_linha = {
+                "UF": uf,
+                "FRU": fru,
+                "SUB1": sub1,
+                "SUB2": sub2,
+                "SUB3": sub3,
+                "DESCRICAO": descricao,
+                "MAQUINAS": maquinas,
+                "CLIENTE": f"{clientes} - ({serial} {data_contrato.strftime('%d/%m/%y')}_{sla}) - {uf}",
+                "DATA_FIM": data_contrato.strftime("%d/%m/%y"),
+                "SLA": sla,
+                "DATA_VERIFICACAO": datetime.now().strftime("%d/%m/%y"),
+                "STATUS": "DENTRO"
+            }
+            df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
+            salvar_dados(df)
 
-        df = pd.concat([df, novo], ignore_index=True)
-        salvar_dados(df)
-
-# 📊 Página de relatório
-def pagina_relatorio(df):
-    st.header("📈 Relatório de Contratos")
-
-    if df.empty:
-        st.warning("⚠️ Nenhum dado disponível para exibir.")
-        return
-
-    # Conversão de datas
-    def parse_data_possivel(valor):
-        try:
-            return pd.to_datetime(valor, format="%d/%m/%y", errors="coerce")
-        except:
-            return None
-
-    df["DATA_FIM"] = df["DATA_FIM"].apply(parse_data_possivel)
-    hoje = datetime.now()
-
-    vencidos = df[df["DATA_FIM"].notna() & (df["DATA_FIM"].dt.date < hoje.date())]
-    ativos = df[df["STATUS"] == "ATIVO"]
-
-    st.subheader("📅 Contratos Vencidos")
-    st.dataframe(vencidos)
-
-    st.subheader("🟢 Contratos Ativos")
-    st.dataframe(ativos)
-
-# 🧭 Função principal
-def main():
-    st.title("🔧 Sistema de Controle de Peças e Contratos")
+# =========================
+# RENOVAÇÃO DE CONTRATO
+# =========================
+def pagina_renovacao():
+    st.subheader("🔄 Renovação de Contrato")
 
     df = carregar_dados()
+    hoje = datetime.today()
 
-    menu = st.sidebar.radio("Navegação", ["Cadastro", "Relatório"])
+    vencidas = []
+    for _, row in df.iterrows():
+        data_fim = parse_data_possivel(row.get("DATA_FIM"))
+        if data_fim and data_fim.date() < hoje.date():
+            vencidas.append(row)
 
-    if menu == "Cadastro":
-        pagina_cadastro(df)
-    elif menu == "Relatório":
-        pagina_relatorio(df)
+    if not vencidas:
+        st.info("Nenhum contrato vencido.")
+        return
 
-# 🚀 Iniciar o app
-if __name__ == "__main__":
-    main()
+    df_vencidas = pd.DataFrame(vencidas)
+    st.dataframe(df_vencidas)
+
+    linha = st.number_input("Linha a renovar (número da tabela acima)", min_value=0, step=1)
+    nova_data = st.date_input("Nova Data")
+    novo_sla = st.text_input("Novo SLA (opcional)")
+
+    if st.button("Atualizar Contrato"):
+        try:
+            idx = int(linha)
+            df.loc[idx, "DATA_FIM"] = nova_data.strftime("%d/%m/%y")
+            df.loc[idx, "STATUS"] = "DENTRO"
+            if novo_sla:
+                df.loc[idx, "SLA"] = novo_sla
+            salvar_dados(df)
+        except Exception as e:
+            st.error(f"Erro: {e}")
+
+# =========================
+# RELATÓRIO
+# =========================
+def pagina_relatorio():
+    st.subheader("📄 Relatório de Peças Vencidas")
+    df = carregar_dados()
+    hoje = datetime.today()
+    vencidas = df[df["DATA_FIM"].apply(lambda x: parse_data_possivel(x) and parse_data_possivel(x).date() < hoje.date())]
+    st.dataframe(vencidas)
+    st.download_button("⬇️ Baixar Relatório", vencidas.to_csv(index=False).encode("utf-8"), "relatorio.csv", "text/csv")
+
+# =========================
+# MENU PRINCIPAL
+# =========================
+def main_page():
+    st.sidebar.title(f"👋 Olá, {st.session_state['usuario']}")
+    escolha = st.sidebar.radio("Menu", ["Cadastro", "Renovação", "Relatório", "Sair"])
+    if escolha == "Cadastro":
+        pagina_cadastro()
+    elif escolha == "Renovação":
+        pagina_renovacao()
+    elif escolha == "Relatório":
+        pagina_relatorio()
+    elif escolha == "Sair":
+        st.session_state.clear()
+        st.rerun()
+
+# =========================
+# APP
+# =========================
+st.set_page_config(page_title="Controle de Peças", layout="centered")
+
+if "usuario" not in st.session_state:
+    login_page()
+else:
+    main_page()
