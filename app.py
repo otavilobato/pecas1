@@ -93,7 +93,7 @@ def tentar_login():
     senha_hash = hashlib.sha256(senha.encode()).hexdigest()
     if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
         st.session_state["usuario"] = usuario
-        st.success("Login realizado com sucesso!")
+        st.experimental_rerun()
     else:
         st.error("Usuário ou senha incorretos.")
 
@@ -152,6 +152,7 @@ def pagina_renovacao():
     st.subheader("🔄 Renovação de Contrato")
     df = carregar_dados()
     hoje = datetime.today()
+    proximos_7dias = hoje + timedelta(days=7)
 
     df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
     vencidas = df[df["DATA_FIM_DT"].notna() & (df["DATA_FIM_DT"].dt.date < hoje.date())]
@@ -209,7 +210,6 @@ def pagina_visualizar_tudo():
     colunas_ocultar = ["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"]
     df_mostrar = df.drop(columns=[c for c in colunas_ocultar if c in df.columns])
 
-    # Exibir DataFrame limpo
     st.dataframe(df_mostrar)
 
     # Botão para baixar arquivo em CSV ou TXT
@@ -228,22 +228,7 @@ def pagina_visualizar_tudo():
             "relatorio.txt",
             "text/plain"
         )
-    def cor_linha(row):
-        if pd.isna(row["DATA_FIM_DT"]):
-            return [""]*len(row)
-        if row["DATA_FIM_DT"].date() < hoje.date():
-            return ["background-color: #f8d7da"]*len(row)
-        elif hoje.date() <= row["DATA_FIM_DT"].date() <= proximos_7dias.date():
-            return ["background-color: #fff3cd"]*len(row)
-        else:
-            return ["background-color: #d4edda"]*len(row)
 
-    # Cria uma cópia apenas para exibir (sem colunas técnicas)
-    df_mostrar = df.drop(columns=["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"], errors='ignore')
-
-    # Aplica o estilo usando o DataFrame original (df), mas mostra df_mostrar
-    styled = df_mostrar.style.apply(lambda r: cor_linha(df.iloc[r.name]), axis=1)
-    st.dataframe(styled)
 # =========================
 # RELATÓRIO
 # =========================
@@ -273,7 +258,7 @@ def pagina_relatorio():
         else:
             st.download_button(
                 "⬇️ Baixar TXT",
-                vencidas_mostrar.to_string(index=False).encode("utf-8"),
+                vencidas_mostrar.to_csv(index=False, sep="\t").encode("utf-8"),
                 "relatorio.txt",
                 "text/plain"
             )
@@ -295,7 +280,7 @@ def main_page():
         pagina_visualizar_tudo()
     elif escolha == "Sair":
         st.session_state.clear()
-        st.info("Você saiu. Atualize a página para fazer login novamente.")
+        st.experimental_rerun()
 
 # =========================
 # APP
