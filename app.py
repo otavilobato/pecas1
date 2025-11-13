@@ -194,11 +194,42 @@ def pagina_renovacao():
 # =========================
 def pagina_relatorio():
     st.subheader("📄 Relatório de Peças Vencidas")
+
     df = carregar_dados()
     hoje = datetime.today()
-    vencidas = df[df["DATA_FIM"].apply(lambda x: parse_data_possivel(x) and parse_data_possivel(x).date() < hoje.date())]
-    st.dataframe(vencidas)
-    st.download_button("⬇️ Baixar Relatório", vencidas.to_csv(index=False).encode("utf-8"), "relatorio.csv", "text/csv")
+
+    # Verifica se a planilha foi carregada
+    if df.empty:
+        st.warning("⚠️ Não foi possível carregar dados.")
+        return
+
+    # Garante que a coluna exista
+    if "DATA_FIM" not in df.columns:
+        st.error("❌ A coluna 'DATA_FIM' não existe na planilha.")
+        return
+
+    # Função segura para verificar se a data é vencida
+    def vencida(x):
+        data = parse_data_possivel(x)
+        if data is None:
+            return False
+        return data.date() < hoje.date()
+
+    try:
+        vencidas = df[df["DATA_FIM"].apply(vencida)]
+        if vencidas.empty:
+            st.info("Nenhum contrato vencido encontrado.")
+        else:
+            st.dataframe(vencidas)
+            st.download_button(
+                "⬇️ Baixar Relatório",
+                vencidas.to_csv(index=False).encode("utf-8"),
+                "relatorio_vencidas.csv",
+                "text/csv",
+            )
+    except Exception as e:
+        st.error(f"Erro ao gerar relatório: {e}")
+
 
 # =========================
 # MENU PRINCIPAL
