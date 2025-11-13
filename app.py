@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 import requests
 import base64
@@ -12,11 +12,10 @@ import os
 # =========================
 EXCEL_URL = "https://github.com/otavilobato/pecas1/raw/refs/heads/main/SALDO_PECAS.xlsx"
 EXCEL_API = "https://api.github.com/repos/otavilobato/pecas1/contents/SALDO_PECAS.xlsx"
-EXCEL_ARQUIVO = "SALDO_PECAS.xlsx"
 
 USUARIOS = {
     "olobato": hashlib.sha256("9410".encode()).hexdigest(),
-    "rafaell": hashlib.sha256("1111".encode()).hexdigest()
+    "gladeira": hashlib.sha256("0002".encode()).hexdigest()
 }
 
 # =========================
@@ -31,7 +30,8 @@ def carregar_dados():
     try:
         r = requests.get(EXCEL_URL, headers=headers)
         if r.status_code == 200:
-            return pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
+            df = pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
+            return df
         else:
             st.error(f"❌ Falha ao carregar planilha (código {r.status_code}).")
             return pd.DataFrame()
@@ -45,21 +45,17 @@ def salvar_dados(df):
         if not github_token:
             st.error("❌ Token do GitHub não configurado.")
             return None
-
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name="PRINCIPAL", index=False)
         content = output.getvalue()
         encoded_content = base64.b64encode(content).decode("utf-8")
-
         headers = {"Authorization": f"token {github_token}"}
         resp_get = requests.get(EXCEL_API, headers=headers)
         sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
-
         commit_message = f"Atualização automática via Streamlit ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
         data = {"message": commit_message, "content": encoded_content, "sha": sha}
         resp_put = requests.put(EXCEL_API, headers=headers, json=data)
-
         if resp_put.status_code in (200, 201):
             st.success("✅ Alterações salvas no GitHub com sucesso!")
         else:
@@ -177,7 +173,6 @@ def pagina_renovacao():
     novo_sla = st.text_input("Novo SLA (opcional)")
 
     col1, col2 = st.columns(2)
-
     with col1:
         if st.button("Atualizar Contrato"):
             try:
@@ -190,7 +185,6 @@ def pagina_renovacao():
                 st.success("Contrato atualizado com sucesso!")
             except Exception as e:
                 st.error(f"Erro ao atualizar: {e}")
-
     with col2:
         if st.button("❌ Excluir Contrato"):
             try:
@@ -202,13 +196,40 @@ def pagina_renovacao():
                 st.error(f"Erro ao excluir: {e}")
 
 # =========================
+# VISUALIZAR TODOS
+# =========================
+def pagina_visualizar_tudo():
+    st.subheader("📋 Todos os registros")
+    df = carregar_dados()
+    if df.empty:
+        st.info("Nenhum registro encontrado.")
+        return
+
+    df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
+    hoje = datetime.today()
+    proximos_7dias = hoje + timedelta(days=7)
+
+    # Colunas de aviso colorido
+    def cor_linha(row):
+        if row["DATA_FIM_DT"] is None:
+            return [""]*len(row)
+        if row["DATA_FIM_DT"].date() < hoje.date():
+            return ["background-color: #f8d7da"]*len(row)  # vermelho
+        elif hoje.date() <= row["DATA_FIM_DT"].date() <= proximos_7dias.date():
+            return ["background-color: #fff3cd"]*len(row)  # amarelo
+        else:
+            return ["background-color: #d4edda"]*len(row)  # verde
+
+    df_mostrar = df.drop(columns=["DATA_FIM_DT"], errors='ignore')
+    st.dataframe(df_mostrar.style.apply(cor_linha, axis=1))
+
+# =========================
 # RELATÓRIO
 # =========================
 def pagina_relatorio():
     st.subheader("📄 Relatório de Peças Vencidas")
     df = carregar_dados()
     hoje = datetime.today()
-
     df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
     vencidas = df[df["DATA_FIM_DT"].notna() & (df["DATA_FIM_DT"].dt.date < hoje.date())]
 
@@ -241,26 +262,16 @@ def pagina_relatorio():
 # =========================
 def main_page():
     st.sidebar.title(f"👋 Olá, {st.session_state['usuario']}")
-    escolha = st.sidebar.radio("Menu", ["Cadastro", "Renovação", "Relatório", "Sair"])
-    
+    escolha = st.sidebar.radio("Menu", ["Cadastro", "Renovação", "Relatório", "Visualizar Tudo", "Sair"])
+
     if escolha == "Cadastro":
         pagina_cadastro()
     elif escolha == "Renovação":
         pagina_renovacao()
     elif escolha == "Relatório":
         pagina_relatorio()
+    elif escolha == "Visualizar Tudo":
+        pagina_visualizar_tudo()
     elif escolha == "Sair":
         st.session_state.clear()
-        st.info("Você saiu. Atualize a página para fazer login novamente.")
-        # Evita usar st.experimental_rerun()
-
-
-# =========================
-# APP
-# =========================
-st.set_page_config(page_title="Controle de Peças", layout="centered")
-
-if "usuario" not in st.session_state:
-    login_page()
-else:
-    main_page()
+        st.info("Você saiu. Atualize a página para fazer login novament
