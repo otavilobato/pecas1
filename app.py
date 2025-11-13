@@ -4,12 +4,15 @@ import hashlib
 from datetime import datetime
 import io
 import requests
+import base64
+import os
 
 # =========================
 # CONFIGURAÇÃO
 # =========================
-# URL da planilha Excel no GitHub (link RAW)
-EXCEL_URL = "https://raw.githubusercontent.com/otavilobato/pecas1/main/SALDO_PECAS.xlsx"
+# URL da planilha Excel no GitHub (exemplo)
+EXCEL_URL = "https://raw.githubusercontent.com/seu_usuario/seu_repo/main/SALDO_PECAS.xlsx"
+EXCEL_API = "https://api.github.com/repos/seu_usuario/seu_repo/contents/SALDO_PECAS.xlsx"
 EXCEL_ARQUIVO = "SALDO_PECAS.xlsx"
 
 USUARIOS = {
@@ -22,22 +25,57 @@ USUARIOS = {
 # =========================
 @st.cache_data(ttl=60)
 def carregar_dados():
-    try:
-        r = requests.get(EXCEL_URL)
-        r.raise_for_status()  # Lança erro se o status não for 200
+    r = requests.get(EXCEL_URL)
+    if r.status_code == 200:
         return pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
-    except Exception as e:
-        st.error(f"❌ Não foi possível carregar a planilha do GitHub.\nErro: {e}")
+    else:
+        st.error("Não foi possível carregar a planilha do GitHub.")
         return pd.DataFrame()
 
 def salvar_dados(df):
-    # Cria arquivo Excel em memória
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name="PRINCIPAL", index=False)
-    # Para regravar no GitHub, o ideal é via API com token pessoal
-    st.info("⚠️ Para salvar no GitHub automaticamente, configure um token pessoal.")
-    return output
+    """
+    Salva os dados de volta no GitHub, usando o token de acesso pessoal.
+    O token deve estar definido em st.secrets["GITHUB_TOKEN"] ou como variável de ambiente.
+    """
+    try:
+        # Obtém token de forma segura
+        github_token = st.secrets.get("GITHUB_TOKEN", os.getenv("GITHUB_TOKEN"))
+        if not github_token:
+            st.error("❌ Token do GitHub não configurado. Adicione em Secrets ou variável de ambiente.")
+            return None
+
+        # Converte o DataFrame para Excel em memória
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name="PRINCIPAL", index=False)
+        content = output.getvalue()
+
+        # Codifica em base64 para envio pela API
+        encoded_content = base64.b64encode(content).decode("utf-8")
+
+        # Verifica o SHA do arquivo atual (necessário para atualizar)
+        headers = {"Authorization": f"token {github_token}"}
+        resp_get = requests.get(EXCEL_API, headers=headers)
+        sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
+
+        # Envia o novo conteúdo para o GitHub
+        commit_message = f"Atualização automática via Streamlit ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
+        data = {
+            "message": commit_message,
+            "content": encoded_content,
+            "sha": sha
+        }
+        resp_put = requests.put(EXCEL_API, headers=headers, json=data)
+
+        if resp_put.status_code in (200, 201):
+            st.success("✅ Alterações salvas no GitHub com sucesso!")
+        else:
+            st.error(f"Erro ao salvar no GitHub: {resp_put.status_code}")
+            st.text(resp_put.text)
+
+    except Exception as e:
+        st.error(f"Erro ao tentar salvar: {e}")
+        return None
 
 def parse_data_possivel(valor):
     if isinstance(valor, datetime):
@@ -108,7 +146,6 @@ def pagina_cadastro():
             }
             df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
             salvar_dados(df)
-            st.success("✅ Peça cadastrada com sucesso!")
 
 # =========================
 # RENOVAÇÃO DE CONTRATO
@@ -144,7 +181,6 @@ def pagina_renovacao():
             if novo_sla:
                 df.loc[idx, "SLA"] = novo_sla
             salvar_dados(df)
-            st.success("✅ Contrato atualizado com sucesso!")
         except Exception as e:
             st.error(f"Erro: {e}")
 
