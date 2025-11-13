@@ -16,7 +16,7 @@ EXCEL_ARQUIVO = "SALDO_PECAS.xlsx"
 
 USUARIOS = {
     "olobato": hashlib.sha256("9410".encode()).hexdigest(),
-    "gladeira": hashlib.sha256("0002".encode()).hexdigest()
+    "rafaell": hashlib.sha256("1111".encode()).hexdigest()
 }
 
 # =========================
