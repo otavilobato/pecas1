@@ -92,13 +92,22 @@ def salvar_dados(df):
 def parse_data_possivel(valor):
     if isinstance(valor, datetime):
         return valor
+    if pd.isna(valor):
+        return None
     try:
-        return datetime.strptime(str(valor), "%d/%m/%Y")
-    except:
-        try:
-            return datetime.strptime(str(valor), "%d/%m/%y")
-        except:
-            return None
+        # Caso Excel leia como número de data (serial)
+        if isinstance(valor, (int, float)):
+            return datetime.fromordinal(datetime(1900, 1, 1).toordinal() + int(valor) - 2)
+        # Caso texto com ano de 2 dígitos
+        for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(str(valor).strip(), fmt)
+            except ValueError:
+                continue
+        return None
+    except Exception:
+        return None
+
 
 # =========================
 # LOGIN
