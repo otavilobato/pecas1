@@ -89,18 +89,24 @@ def parse_data_possivel(valor):
 # =========================
 # LOGIN
 # =========================
+def tentar_login():
+    usuario = st.session_state.get("usuario_input", "")
+    senha = st.session_state.get("senha_input", "")
+    if not usuario or not senha:
+        return
+    senha_hash = hashlib.sha256(senha.encode()).hexdigest()
+    if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
+        st.session_state["usuario"] = usuario
+        st.success("Login realizado com sucesso!")
+        st.experimental_rerun()
+    else:
+        st.error("Usuário ou senha incorretos.")
+
 def login_page():
     st.title("🔐 Login")
-    usuario = st.text_input("Usuário")
-    senha = st.text_input("Senha", type="password")
-    if st.button("Entrar"):
-        senha_hash = hashlib.sha256(senha.encode()).hexdigest()
-        if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
-            st.session_state["usuario"] = usuario
-            st.success("Login realizado com sucesso!")
-            st.rerun()
-        else:
-            st.error("Usuário ou senha incorretos.")
+    st.text_input("Usuário", key="usuario_input")
+    st.text_input("Senha", type="password", key="senha_input", on_change=tentar_login)
+    st.button("Entrar", on_click=tentar_login)
 
 # =========================
 # CADASTRO DE PEÇAS
@@ -127,17 +133,18 @@ def pagina_cadastro():
         elif len(fru) != 7:
             st.error("FRU deve ter 7 caracteres.")
         else:
+            # Converte tudo para maiúsculo
             nova_linha = {
-                "UF": uf,
-                "FRU": fru,
-                "SUB1": sub1,
-                "SUB2": sub2,
-                "SUB3": sub3,
-                "DESCRICAO": descricao,
-                "MAQUINAS": maquinas,
-                "CLIENTE": f"{cliente} - ({serial} {data_contrato.strftime('%d/%m/%y')}_{sla}) - {uf}",
+                "UF": uf.upper(),
+                "FRU": fru.upper(),
+                "SUB1": sub1.upper(),
+                "SUB2": sub2.upper(),
+                "SUB3": sub3.upper(),
+                "DESCRICAO": descricao.upper(),
+                "MAQUINAS": maquinas.upper(),
+                "CLIENTE": f"{cliente.upper()} - ({serial.upper()} {data_contrato.strftime('%d/%m/%y')}_{sla.upper()}) - {uf.upper()}",
                 "DATA_FIM": data_contrato.strftime("%d/%m/%y"),
-                "SLA": sla,
+                "SLA": sla.upper(),
                 "DATA_VERIFICACAO": datetime.now().strftime("%d/%m/%y"),
                 "STATUS": "DENTRO"
             }
@@ -181,7 +188,7 @@ def pagina_renovacao():
                 df.loc[idx, "DATA_FIM"] = nova_data.strftime("%d/%m/%y")
                 df.loc[idx, "STATUS"] = "DENTRO"
                 if novo_sla:
-                    df.loc[idx, "SLA"] = novo_sla
+                    df.loc[idx, "SLA"] = novo_sla.upper()
                 salvar_dados(df)
                 st.success("Contrato atualizado com sucesso!")
             except Exception as e:
@@ -213,13 +220,25 @@ def pagina_relatorio():
         return
 
     vencidas_mostrar = vencidas.drop(columns=["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"], errors='ignore')
+    
     st.dataframe(vencidas_mostrar)
-    st.download_button(
-        "⬇️ Baixar Relatório",
-        vencidas_mostrar.to_csv(index=False).encode("utf-8"),
-        "relatorio.csv",
-        "text/csv"
-    )
+
+    formato_relatorio = st.selectbox("Formato do relatório", ["CSV", "TXT"])
+    if st.button("⬇️ Baixar Relatório"):
+        if formato_relatorio == "CSV":
+            st.download_button(
+                "⬇️ Baixar CSV",
+                vencidas_mostrar.to_csv(index=False).encode("utf-8"),
+                "relatorio.csv",
+                "text/csv"
+            )
+        else:
+            st.download_button(
+                "⬇️ Baixar TXT",
+                vencidas_mostrar.to_string(index=False).encode("utf-8"),
+                "relatorio.txt",
+                "text/plain"
+            )
 
 # =========================
 # MENU PRINCIPAL
@@ -235,7 +254,7 @@ def main_page():
         pagina_relatorio()
     elif escolha == "Sair":
         st.session_state.clear()
-        st.rerun()
+        st.experimental_rerun()
 
 # =========================
 # APP
