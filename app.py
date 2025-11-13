@@ -1,29 +1,186 @@
 import streamlit as st
 import pandas as pd
+import hashlib
+from datetime import datetime
+import io
+import requests
 
-# Configuração da página para celular
-st.set_page_config(page_title="Visualizador Excel", layout="wide")
+# =========================
+# CONFIGURAÇÃO
+# =========================
+# URL da planilha Excel no GitHub (exemplo)
+EXCEL_URL = "https://raw.githubusercontent.com/seu_usuario/seu_repo/main/SALDO_PECAS.xlsx"
+EXCEL_ARQUIVO = "SALDO_PECAS.xlsx"
 
-st.title("📊 Visualizador de Tabela Excel")
+USUARIOS = {
+    "olobato": hashlib.sha256("9410".encode()).hexdigest(),
+    "gladeira": hashlib.sha256("0002".encode()).hexdigest()
+}
 
-# Carregar arquivo Excel
-try:
-    df = pd.read_excel("dados.xlsx")
-    st.success("Arquivo carregado com sucesso!")
-except FileNotFoundError:
-    st.error("Arquivo 'dados.xlsx' não encontrado. Suba o arquivo no repositório.")
+# =========================
+# FUNÇÕES AUXILIARES
+# =========================
+@st.cache_data(ttl=60)
+def carregar_dados():
+    r = requests.get(EXCEL_URL)
+    if r.status_code == 200:
+        return pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
+    else:
+        st.error("Não foi possível carregar a planilha do GitHub.")
+        return pd.DataFrame()
 
-# Mostrar tabela completa
-st.subheader("Tabela Completa")
-st.dataframe(df)
+def salvar_dados(df):
+    # Cria arquivo Excel em memória
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name="PRINCIPAL", index=False)
+    # Para regravar no GitHub, o ideal é via API, com token
+    st.info("⚠️ Para salvar no GitHub automaticamente, configure um token pessoal.")
+    return output
 
-# Filtro simples
-st.subheader("🔍 Filtrar por coluna")
-colunas = df.columns.tolist()
-coluna_escolhida = st.selectbox("Escolha a coluna para filtrar:", colunas)
-valor_filtro = st.text_input("Digite o valor para buscar:")
+def parse_data_possivel(valor):
+    if isinstance(valor, datetime):
+        return valor
+    try:
+        return datetime.strptime(str(valor), "%d/%m/%Y")
+    except:
+        try:
+            return datetime.strptime(str(valor), "%d/%m/%y")
+        except:
+            return None
 
-if valor_filtro:
-    resultado = df[df[coluna_escolhida].astype(str).str.contains(valor_filtro, case=False)]
-    st.write(f"Resultados encontrados: {len(resultado)}")
-    st.dataframe(resultado)
+# =========================
+# LOGIN
+# =========================
+def login_page():
+    st.title("🔐 Login")
+    usuario = st.text_input("Usuário")
+    senha = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        senha_hash = hashlib.sha256(senha.encode()).hexdigest()
+        if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
+            st.session_state["usuario"] = usuario
+            st.success("Login realizado com sucesso!")
+            st.rerun()
+        else:
+            st.error("Usuário ou senha incorretos.")
+
+# =========================
+# CADASTRO DE PEÇAS
+# =========================
+def pagina_cadastro():
+    st.subheader("🧩 Cadastro de Peças")
+
+    df = carregar_dados()
+
+    uf = st.selectbox("UF", ["", "AM","BA","CE","DF","GO","MA","MG","PA","PE","RJ","TO"])
+    fru = st.text_input("FRU (7 caracteres)")
+    sub1 = st.text_input("SUB1")
+    sub2 = st.text_input("SUB2")
+    sub3 = st.text_input("SUB3")
+    descricao = st.text_input("Descrição")
+    maquinas = st.text_input("Máquinas")
+    clientes = st.text_input("Clientes")
+    serial = st.text_input("Serial")
+    data_contrato = st.date_input("Data do Contrato")
+    sla = st.text_input("SLA")
+
+    if st.button("💾 Salvar Peça"):
+        if not uf or not fru or not serial or not data_contrato:
+            st.error("Campos UF, FRU, SERIAL e Data são obrigatórios.")
+        elif len(fru) != 7:
+            st.error("FRU deve ter 7 caracteres.")
+        else:
+            nova_linha = {
+                "UF": uf,
+                "FRU": fru,
+                "SUB1": sub1,
+                "SUB2": sub2,
+                "SUB3": sub3,
+                "DESCRICAO": descricao,
+                "MAQUINAS": maquinas,
+                "CLIENTE": f"{clientes} - ({serial} {data_contrato.strftime('%d/%m/%y')}_{sla}) - {uf}",
+                "DATA_FIM": data_contrato.strftime("%d/%m/%y"),
+                "SLA": sla,
+                "DATA_VERIFICACAO": datetime.now().strftime("%d/%m/%y"),
+                "STATUS": "DENTRO"
+            }
+            df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
+            salvar_dados(df)
+            st.success("✅ Peça cadastrada com sucesso!")
+
+# =========================
+# RENOVAÇÃO DE CONTRATO
+# =========================
+def pagina_renovacao():
+    st.subheader("🔄 Renovação de Contrato")
+
+    df = carregar_dados()
+    hoje = datetime.today()
+
+    vencidas = []
+    for _, row in df.iterrows():
+        data_fim = parse_data_possivel(row.get("DATA_FIM"))
+        if data_fim and data_fim.date() < hoje.date():
+            vencidas.append(row)
+
+    if not vencidas:
+        st.info("Nenhum contrato vencido.")
+        return
+
+    df_vencidas = pd.DataFrame(vencidas)
+    st.dataframe(df_vencidas)
+
+    linha = st.number_input("Linha a renovar (número da tabela acima)", min_value=0, step=1)
+    nova_data = st.date_input("Nova Data")
+    novo_sla = st.text_input("Novo SLA (opcional)")
+
+    if st.button("Atualizar Contrato"):
+        try:
+            idx = int(linha)
+            df.loc[idx, "DATA_FIM"] = nova_data.strftime("%d/%m/%y")
+            df.loc[idx, "STATUS"] = "DENTRO"
+            if novo_sla:
+                df.loc[idx, "SLA"] = novo_sla
+            salvar_dados(df)
+            st.success("✅ Contrato atualizado com sucesso!")
+        except Exception as e:
+            st.error(f"Erro: {e}")
+
+# =========================
+# RELATÓRIO
+# =========================
+def pagina_relatorio():
+    st.subheader("📄 Relatório de Peças Vencidas")
+    df = carregar_dados()
+    hoje = datetime.today()
+    vencidas = df[df["DATA_FIM"].apply(lambda x: parse_data_possivel(x) and parse_data_possivel(x).date() < hoje.date())]
+    st.dataframe(vencidas)
+    st.download_button("⬇️ Baixar Relatório", vencidas.to_csv(index=False).encode("utf-8"), "relatorio.csv", "text/csv")
+
+# =========================
+# MENU PRINCIPAL
+# =========================
+def main_page():
+    st.sidebar.title(f"👋 Olá, {st.session_state['usuario']}")
+    escolha = st.sidebar.radio("Menu", ["Cadastro", "Renovação", "Relatório", "Sair"])
+    if escolha == "Cadastro":
+        pagina_cadastro()
+    elif escolha == "Renovação":
+        pagina_renovacao()
+    elif escolha == "Relatório":
+        pagina_relatorio()
+    elif escolha == "Sair":
+        st.session_state.clear()
+        st.rerun()
+
+# =========================
+# APP
+# =========================
+st.set_page_config(page_title="Controle de Peças", layout="centered")
+
+if "usuario" not in st.session_state:
+    login_page()
+else:
+    main_page()
+
