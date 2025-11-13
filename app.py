@@ -10,12 +10,11 @@ import os
 # =========================
 # CONFIGURAÇÃO
 # =========================
-# URLs do seu repositório
-EXCEL_URL = "https://github.com/otavilobato/pecas1/raw/refs/heads/main/SALDO_PECAS.xlsx"
-EXCEL_API = "https://api.github.com/repos/otavilobato/pecas1/contents/SALDO_PECAS.xlsx"
+# URL da planilha Excel no GitHub (exemplo)
+EXCEL_URL = "https://raw.githubusercontent.com/seu_usuario/seu_repo/main/SALDO_PECAS.xlsx"
+EXCEL_API = "https://api.github.com/repos/seu_usuario/seu_repo/contents/SALDO_PECAS.xlsx"
 EXCEL_ARQUIVO = "SALDO_PECAS.xlsx"
 
-# Usuários autorizados
 USUARIOS = {
     "olobato": hashlib.sha256("9410".encode()).hexdigest(),
     "gladeira": hashlib.sha256("0002".encode()).hexdigest()
@@ -26,25 +25,11 @@ USUARIOS = {
 # =========================
 @st.cache_data(ttl=60)
 def carregar_dados():
-    """
-    Carrega a planilha Excel do GitHub.
-    Funciona com links 'raw' públicos ou privados (usando token).
-    """
-    github_token = st.secrets.get("GITHUB_TOKEN", os.getenv("GITHUB_TOKEN"))
-    headers = {}
-    if github_token:
-        headers["Authorization"] = f"token {github_token}"
-
-    try:
-        r = requests.get(EXCEL_URL, headers=headers)
-        if r.status_code == 200:
-            return pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
-        else:
-            st.error(f"❌ Falha ao carregar planilha (código {r.status_code}). Verifique se o link está correto e se o arquivo existe.")
-            st.text(r.text)
-            return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Erro ao tentar carregar: {e}")
+    r = requests.get(EXCEL_URL)
+    if r.status_code == 200:
+        return pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
+    else:
+        st.error("Não foi possível carregar a planilha do GitHub.")
         return pd.DataFrame()
 
 def salvar_dados(df):
@@ -53,24 +38,27 @@ def salvar_dados(df):
     O token deve estar definido em st.secrets["GITHUB_TOKEN"] ou como variável de ambiente.
     """
     try:
+        # Obtém token de forma segura
         github_token = st.secrets.get("GITHUB_TOKEN", os.getenv("GITHUB_TOKEN"))
         if not github_token:
             st.error("❌ Token do GitHub não configurado. Adicione em Secrets ou variável de ambiente.")
             return None
 
-        # Cria Excel em memória
+        # Converte o DataFrame para Excel em memória
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name="PRINCIPAL", index=False)
         content = output.getvalue()
+
+        # Codifica em base64 para envio pela API
         encoded_content = base64.b64encode(content).decode("utf-8")
 
-        # Busca SHA atual do arquivo (necessário para atualizar)
+        # Verifica o SHA do arquivo atual (necessário para atualizar)
         headers = {"Authorization": f"token {github_token}"}
         resp_get = requests.get(EXCEL_API, headers=headers)
         sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
 
-        # Commit da atualização
+        # Envia o novo conteúdo para o GitHub
         commit_message = f"Atualização automática via Streamlit ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
         data = {
             "message": commit_message,
@@ -121,6 +109,7 @@ def login_page():
 # =========================
 def pagina_cadastro():
     st.subheader("🧩 Cadastro de Peças")
+
     df = carregar_dados()
 
     uf = st.selectbox("UF", ["", "AM","BA","CE","DF","GO","MA","MG","PA","PE","RJ","TO"])
@@ -149,8 +138,8 @@ def pagina_cadastro():
                 "SUB3": sub3,
                 "DESCRICAO": descricao,
                 "MAQUINAS": maquinas,
-                "CLIENTE": f"{clientes} - ({serial} {data_contrato.strftime('%d/%m/%y')}_{sla}) - {uf}",
-                "DATA_FIM": data_contrato.strftime("%d/%m/%y"),
+                "CLIENTES": f"{clientes} - ({serial} {data_contrato.strftime('%d/%m/%y')}_{sla}) - {uf}",
+                "DATA FIM DE CONTRATO": data_contrato.strftime("%d/%m/%y"),
                 "SLA": sla,
                 "DATA_VERIFICACAO": datetime.now().strftime("%d/%m/%y"),
                 "STATUS": "DENTRO"
@@ -163,6 +152,7 @@ def pagina_cadastro():
 # =========================
 def pagina_renovacao():
     st.subheader("🔄 Renovação de Contrato")
+
     df = carregar_dados()
     hoje = datetime.today()
 
