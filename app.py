@@ -93,6 +93,7 @@ def tentar_login():
     senha_hash = hashlib.sha256(senha.encode()).hexdigest()
     if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
         st.session_state["usuario"] = usuario
+        st.success("Login realizado com sucesso!")
         st.experimental_rerun()
     else:
         st.error("Usuário ou senha incorretos.")
@@ -210,6 +211,7 @@ def pagina_visualizar_tudo():
     colunas_ocultar = ["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"]
     df_mostrar = df.drop(columns=[c for c in colunas_ocultar if c in df.columns])
 
+    # Exibir DataFrame limpo
     st.dataframe(df_mostrar)
 
     # Botão para baixar arquivo em CSV ou TXT
@@ -280,7 +282,8 @@ def main_page():
         pagina_visualizar_tudo()
     elif escolha == "Sair":
         st.session_state.clear()
-        st.experimental_rerun()
+        st.info("Você saiu. Atualize a página para fazer login novamente.")
+        # NÃO usar st.experimental_rerun() aqui, evita erro de logout
 
 # =========================
 # APP
