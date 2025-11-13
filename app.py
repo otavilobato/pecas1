@@ -98,22 +98,8 @@ def tentar_login():
     if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
         st.session_state["usuario"] = usuario
         st.success("Login realizado com sucesso!")
-        # NÃO chamar st.experimental_rerun() aqui
     else:
         st.error("Usuário ou senha incorretos.")
-
-def login_page():
-    st.title("🔐 Login")
-    st.text_input("Usuário", key="usuario_input")
-    st.text_input("Senha", type="password", key="senha_input", on_change=tentar_login)
-    st.button("Entrar", on_click=tentar_login)
-
-# Depois, no fluxo principal:
-if "usuario" not in st.session_state:
-    login_page()
-else:
-    main_page()
-
 
 def login_page():
     st.title("🔐 Login")
@@ -146,7 +132,6 @@ def pagina_cadastro():
         elif len(fru) != 7:
             st.error("FRU deve ter 7 caracteres.")
         else:
-            # Converte tudo para maiúsculo
             nova_linha = {
                 "UF": uf.upper(),
                 "FRU": fru.upper(),
@@ -179,7 +164,6 @@ def pagina_renovacao():
         st.info("Nenhum contrato vencido.")
         return
 
-    # Mostrar tabela sem colunas auxiliares
     vencidas_mostrar = vencidas.drop(columns=["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"], errors='ignore')
     st.dataframe(vencidas_mostrar)
 
@@ -233,7 +217,6 @@ def pagina_relatorio():
         return
 
     vencidas_mostrar = vencidas.drop(columns=["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"], errors='ignore')
-    
     st.dataframe(vencidas_mostrar)
 
     formato_relatorio = st.selectbox("Formato do relatório", ["CSV", "TXT"])
