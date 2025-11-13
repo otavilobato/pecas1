@@ -175,33 +175,57 @@ def pagina_renovacao():
     df = carregar_dados()
     hoje = datetime.today()
 
-    vencidas = []
-    for _, row in df.iterrows():
-        data_fim = parse_data_possivel(row.get("DATA_FIM"))
-        if data_fim and data_fim.date() < hoje.date():
-            vencidas.append(row)
+    # Converte a coluna DATA_FIM para datetime
+    df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
 
-    if not vencidas:
+    # Filtra contratos vencidos
+    vencidas = df[df["DATA_FIM_DT"].notna() & (df["DATA_FIM_DT"].dt.date < hoje.date())]
+
+    if vencidas.empty:
         st.info("Nenhum contrato vencido.")
         return
 
-    df_vencidas = pd.DataFrame(vencidas)
-    st.dataframe(df_vencidas)
+    # Mostra a tabela de vencidas
+    st.dataframe(vencidas)
 
-    linha = st.number_input("Linha a renovar (número da tabela acima)", min_value=0, step=1)
+    # Seleção de linha pelo índice
+    linha = st.number_input(
+        "Linha a renovar ou excluir (número da tabela acima)",
+        min_value=0,
+        max_value=len(df)-1,
+        step=1
+    )
+
     nova_data = st.date_input("Nova Data")
     novo_sla = st.text_input("Novo SLA (opcional)")
 
-    if st.button("Atualizar Contrato"):
-        try:
-            idx = int(linha)
-            df.loc[idx, "DATA_FIM"] = nova_data.strftime("%d/%m/%y")
-            df.loc[idx, "STATUS"] = "DENTRO"
-            if novo_sla:
-                df.loc[idx, "SLA"] = novo_sla
-            salvar_dados(df)
-        except Exception as e:
-            st.error(f"Erro: {e}")
+    col1, col2 = st.columns(2)
+
+    # Botão para atualizar contrato
+    with col1:
+        if st.button("Atualizar Contrato"):
+            try:
+                idx = int(linha)
+                df.loc[idx, "DATA_FIM"] = nova_data.strftime("%d/%m/%y")
+                df.loc[idx, "STATUS"] = "DENTRO"
+                if novo_sla:
+                    df.loc[idx, "SLA"] = novo_sla
+                salvar_dados(df)
+                st.success("Contrato atualizado com sucesso!")
+            except Exception as e:
+                st.error(f"Erro ao atualizar: {e}")
+
+    # Botão para excluir contrato
+    with col2:
+        if st.button("❌ Excluir Contrato"):
+            try:
+                idx = int(linha)
+                df = df.drop(idx).reset_index(drop=True)  # Remove a linha selecionada
+                salvar_dados(df)
+                st.success("Contrato excluído com sucesso!")
+            except Exception as e:
+                st.error(f"Erro ao excluir: {e}")
+
 
 # =========================
 # RELATÓRIO
