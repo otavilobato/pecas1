@@ -10,10 +10,13 @@ import os
 # =========================
 # CONFIGURAÇÃO
 # =========================
-# URL da planilha Excel no GitHub (exemplo)
-EXCEL_URL = "https://raw.githubusercontent.com/seu_usuario/seu_repo/main/SALDO_PECAS.xlsx"
-EXCEL_API = "https://api.github.com/repos/seu_usuario/seu_repo/contents/SALDO_PECAS.xlsx"
-EXCEL_ARQUIVO = "SALDO_PECAS.xlsx"
+# Substitua pelos seus dados reais
+REPO = "otavilobato/pecas1"
+ARQUIVO = "SALDO_PECAS.xlsx"
+
+EXCEL_URL = f"https://github.com/{REPO}/raw/refs/heads/main/{ARQUIVO}"
+EXCEL_API = f"https://api.github.com/repos/{REPO}/contents/{ARQUIVO}"
+EXCEL_ARQUIVO = ARQUIVO
 
 USUARIOS = {
     "olobato": hashlib.sha256("9410".encode()).hexdigest(),
@@ -25,46 +28,49 @@ USUARIOS = {
 # =========================
 @st.cache_data(ttl=60)
 def carregar_dados():
-    r = requests.get(EXCEL_URL)
-    if r.status_code == 200:
-        return pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
-    else:
-        st.error("Não foi possível carregar a planilha do GitHub.")
+    """
+    Carrega a planilha Excel do GitHub.
+    Funciona para repositórios públicos e privados (usando token).
+    """
+    github_token = st.secrets.get("GITHUB_TOKEN", os.getenv("GITHUB_TOKEN"))
+    headers = {}
+    if github_token:
+        headers["Authorization"] = f"token {github_token}"
+
+    try:
+        r = requests.get(EXCEL_URL, headers=headers)
+        if r.status_code == 200:
+            return pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
+        else:
+            st.error(f"❌ Não foi possível carregar a planilha ({r.status_code}).")
+            st.text(r.text)
+            return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Erro ao tentar carregar: {e}")
         return pd.DataFrame()
 
 def salvar_dados(df):
     """
     Salva os dados de volta no GitHub, usando o token de acesso pessoal.
-    O token deve estar definido em st.secrets["GITHUB_TOKEN"] ou como variável de ambiente.
     """
     try:
-        # Obtém token de forma segura
         github_token = st.secrets.get("GITHUB_TOKEN", os.getenv("GITHUB_TOKEN"))
         if not github_token:
             st.error("❌ Token do GitHub não configurado. Adicione em Secrets ou variável de ambiente.")
             return None
 
-        # Converte o DataFrame para Excel em memória
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name="PRINCIPAL", index=False)
         content = output.getvalue()
-
-        # Codifica em base64 para envio pela API
         encoded_content = base64.b64encode(content).decode("utf-8")
 
-        # Verifica o SHA do arquivo atual (necessário para atualizar)
         headers = {"Authorization": f"token {github_token}"}
         resp_get = requests.get(EXCEL_API, headers=headers)
         sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
 
-        # Envia o novo conteúdo para o GitHub
         commit_message = f"Atualização automática via Streamlit ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
-        data = {
-            "message": commit_message,
-            "content": encoded_content,
-            "sha": sha
-        }
+        data = {"message": commit_message, "content": encoded_content, "sha": sha}
         resp_put = requests.put(EXCEL_API, headers=headers, json=data)
 
         if resp_put.status_code in (200, 201):
@@ -72,7 +78,6 @@ def salvar_dados(df):
         else:
             st.error(f"Erro ao salvar no GitHub: {resp_put.status_code}")
             st.text(resp_put.text)
-
     except Exception as e:
         st.error(f"Erro ao tentar salvar: {e}")
         return None
@@ -80,13 +85,12 @@ def salvar_dados(df):
 def parse_data_possivel(valor):
     if isinstance(valor, datetime):
         return valor
-    try:
-        return datetime.strptime(str(valor), "%d/%m/%Y")
-    except:
+    for fmt in ("%d/%m/%Y", "%d/%m/%y"):
         try:
-            return datetime.strptime(str(valor), "%d/%m/%y")
+            return datetime.strptime(str(valor), fmt)
         except:
-            return None
+            continue
+    return None
 
 # =========================
 # LOGIN
@@ -109,8 +113,10 @@ def login_page():
 # =========================
 def pagina_cadastro():
     st.subheader("🧩 Cadastro de Peças")
-
     df = carregar_dados()
+    if df.empty:
+        st.warning("⚠️ A planilha está vazia ou não foi carregada.")
+        return
 
     uf = st.selectbox("UF", ["", "AM","BA","CE","DF","GO","MA","MG","PA","PE","RJ","TO"])
     fru = st.text_input("FRU (7 caracteres)")
@@ -139,7 +145,7 @@ def pagina_cadastro():
                 "DESCRICAO": descricao,
                 "MAQUINAS": maquinas,
                 "CLIENTES": f"{clientes} - ({serial} {data_contrato.strftime('%d/%m/%y')}_{sla}) - {uf}",
-                "DATA FIM DE CONTRATO": data_contrato.strftime("%d/%m/%y"),
+                "DATA_FIM": data_contrato.strftime("%d/%m/%y"),
                 "SLA": sla,
                 "DATA_VERIFICACAO": datetime.now().strftime("%d/%m/%y"),
                 "STATUS": "DENTRO"
@@ -152,7 +158,6 @@ def pagina_cadastro():
 # =========================
 def pagina_renovacao():
     st.subheader("🔄 Renovação de Contrato")
-
     df = carregar_dados()
     hoje = datetime.today()
 
