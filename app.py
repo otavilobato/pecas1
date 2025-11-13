@@ -130,7 +130,7 @@ def pagina_cadastro():
     sub3 = st.text_input("SUB3")
     descricao = st.text_input("Descrição")
     maquinas = st.text_input("Máquinas")
-    clientes = st.text_input("Clientes")
+    cliente = st.text_input("Clientes")
     serial = st.text_input("Serial")
     data_contrato = st.date_input("Data do Contrato")
     sla = st.text_input("SLA")
@@ -149,7 +149,7 @@ def pagina_cadastro():
                 "SUB3": sub3,
                 "DESCRICAO": descricao,
                 "MAQUINAS": maquinas,
-                "CLIENTE": f"{clientes} - ({serial} {data_contrato.strftime('%d/%m/%y')}_{sla}) - {uf}",
+                "CLIENTE": f"{cliente} - ({serial} {data_contrato.strftime('%d/%m/%y')}_{sla}) - {uf}",
                 "DATA_FIM": data_contrato.strftime("%d/%m/%y"),
                 "SLA": sla,
                 "DATA_VERIFICACAO": datetime.now().strftime("%d/%m/%y"),
