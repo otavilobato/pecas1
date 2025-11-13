@@ -205,10 +205,29 @@ def pagina_visualizar_tudo():
         st.info("Nenhum registro encontrado.")
         return
 
-    df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
-    hoje = datetime.today()
-    proximos_7dias = hoje + timedelta(days=7)
+    # Cria uma cópia do DataFrame para mostrar, sem colunas técnicas
+    colunas_ocultar = ["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"]
+    df_mostrar = df.drop(columns=[c for c in colunas_ocultar if c in df.columns])
 
+    # Mostra o DataFrame completo sem erros
+    st.dataframe(df_mostrar)
+
+    # Botão para baixar o arquivo (CSV ou TXT)
+    formato = st.radio("Escolha o formato do relatório", ["CSV", "TXT"])
+    if formato == "CSV":
+        st.download_button(
+            "⬇️ Baixar Relatório CSV",
+            df_mostrar.to_csv(index=False).encode("utf-8"),
+            "relatorio.csv",
+            "text/csv"
+        )
+    else:
+        st.download_button(
+            "⬇️ Baixar Relatório TXT",
+            df_mostrar.to_csv(index=False, sep="\t").encode("utf-8"),
+            "relatorio.txt",
+            "text/plain"
+        )
     def cor_linha(row):
         if pd.isna(row["DATA_FIM_DT"]):
             return [""]*len(row)
