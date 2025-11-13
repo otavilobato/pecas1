@@ -209,16 +209,15 @@ def pagina_visualizar_tudo():
     hoje = datetime.today()
     proximos_7dias = hoje + timedelta(days=7)
 
-    # Colunas de aviso colorido
     def cor_linha(row):
         if row["DATA_FIM_DT"] is None:
             return [""]*len(row)
         if row["DATA_FIM_DT"].date() < hoje.date():
-            return ["background-color: #f8d7da"]*len(row)  # vermelho
+            return ["background-color: #f8d7da"]*len(row)
         elif hoje.date() <= row["DATA_FIM_DT"].date() <= proximos_7dias.date():
-            return ["background-color: #fff3cd"]*len(row)  # amarelo
+            return ["background-color: #fff3cd"]*len(row)
         else:
-            return ["background-color: #d4edda"]*len(row)  # verde
+            return ["background-color: #d4edda"]*len(row)
 
     df_mostrar = df.drop(columns=["DATA_FIM_DT"], errors='ignore')
     st.dataframe(df_mostrar.style.apply(cor_linha, axis=1))
@@ -274,4 +273,14 @@ def main_page():
         pagina_visualizar_tudo()
     elif escolha == "Sair":
         st.session_state.clear()
-        st.info("Você saiu. Atualize a página para fazer login novament
+        st.info("Você saiu. Atualize a página para fazer login novamente.")
+
+# =========================
+# APP
+# =========================
+st.set_page_config(page_title="Controle de Peças", layout="centered")
+
+if "usuario" not in st.session_state:
+    login_page()
+else:
+    main_page()
