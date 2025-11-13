@@ -242,6 +242,7 @@ def pagina_relatorio():
 def main_page():
     st.sidebar.title(f"👋 Olá, {st.session_state['usuario']}")
     escolha = st.sidebar.radio("Menu", ["Cadastro", "Renovação", "Relatório", "Sair"])
+    
     if escolha == "Cadastro":
         pagina_cadastro()
     elif escolha == "Renovação":
@@ -250,7 +251,9 @@ def main_page():
         pagina_relatorio()
     elif escolha == "Sair":
         st.session_state.clear()
-        st.experimental_rerun()
+        st.info("Você saiu. Atualize a página para fazer login novamente.")
+        # Evita usar st.experimental_rerun()
+
 
 # =========================
 # APP
