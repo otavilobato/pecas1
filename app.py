@@ -8,8 +8,8 @@ import requests
 # =========================
 # CONFIGURAÇÃO
 # =========================
-# URL da planilha Excel no GitHub (exemplo)
-EXCEL_URL = "https://raw.githubusercontent.com/seu_usuario/seu_repo/main/SALDO_PECAS.xlsx"
+# URL da planilha Excel no GitHub (link RAW)
+EXCEL_URL = "https://raw.githubusercontent.com/otavilobato/pecas1/main/SALDO_PECAS.xlsx"
 EXCEL_ARQUIVO = "SALDO_PECAS.xlsx"
 
 USUARIOS = {
@@ -22,11 +22,12 @@ USUARIOS = {
 # =========================
 @st.cache_data(ttl=60)
 def carregar_dados():
-    r = requests.get(EXCEL_URL)
-    if r.status_code == 200:
+    try:
+        r = requests.get(EXCEL_URL)
+        r.raise_for_status()  # Lança erro se o status não for 200
         return pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
-    else:
-        st.error("Não foi possível carregar a planilha do GitHub.")
+    except Exception as e:
+        st.error(f"❌ Não foi possível carregar a planilha do GitHub.\nErro: {e}")
         return pd.DataFrame()
 
 def salvar_dados(df):
@@ -34,7 +35,7 @@ def salvar_dados(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name="PRINCIPAL", index=False)
-    # Para regravar no GitHub, o ideal é via API, com token
+    # Para regravar no GitHub, o ideal é via API com token pessoal
     st.info("⚠️ Para salvar no GitHub automaticamente, configure um token pessoal.")
     return output
 
@@ -183,4 +184,3 @@ if "usuario" not in st.session_state:
     login_page()
 else:
     main_page()
-
