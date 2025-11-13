@@ -98,9 +98,22 @@ def tentar_login():
     if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
         st.session_state["usuario"] = usuario
         st.success("Login realizado com sucesso!")
-        st.experimental_rerun()
+        # NÃO chamar st.experimental_rerun() aqui
     else:
         st.error("Usuário ou senha incorretos.")
+
+def login_page():
+    st.title("🔐 Login")
+    st.text_input("Usuário", key="usuario_input")
+    st.text_input("Senha", type="password", key="senha_input", on_change=tentar_login)
+    st.button("Entrar", on_click=tentar_login)
+
+# Depois, no fluxo principal:
+if "usuario" not in st.session_state:
+    login_page()
+else:
+    main_page()
+
 
 def login_page():
     st.title("🔐 Login")
