@@ -10,12 +10,10 @@ import os
 # =========================
 # CONFIGURAÇÃO
 # =========================
-# URLs do seu repositório
 EXCEL_URL = "https://github.com/otavilobato/pecas1/raw/refs/heads/main/SALDO_PECAS.xlsx"
 EXCEL_API = "https://api.github.com/repos/otavilobato/pecas1/contents/SALDO_PECAS.xlsx"
 EXCEL_ARQUIVO = "SALDO_PECAS.xlsx"
 
-# Usuários autorizados
 USUARIOS = {
     "olobato": hashlib.sha256("9410".encode()).hexdigest(),
     "gladeira": hashlib.sha256("0002".encode()).hexdigest()
@@ -26,57 +24,40 @@ USUARIOS = {
 # =========================
 @st.cache_data(ttl=60)
 def carregar_dados():
-    """
-    Carrega a planilha Excel do GitHub.
-    Funciona com links 'raw' públicos ou privados (usando token).
-    """
     github_token = st.secrets.get("GITHUB_TOKEN", os.getenv("GITHUB_TOKEN"))
     headers = {}
     if github_token:
         headers["Authorization"] = f"token {github_token}"
-
     try:
         r = requests.get(EXCEL_URL, headers=headers)
         if r.status_code == 200:
             return pd.read_excel(io.BytesIO(r.content), sheet_name="PRINCIPAL")
         else:
-            st.error(f"❌ Falha ao carregar planilha (código {r.status_code}). Verifique se o link está correto e se o arquivo existe.")
-            st.text(r.text)
+            st.error(f"❌ Falha ao carregar planilha (código {r.status_code}).")
             return pd.DataFrame()
     except Exception as e:
         st.error(f"Erro ao tentar carregar: {e}")
         return pd.DataFrame()
 
 def salvar_dados(df):
-    """
-    Salva os dados de volta no GitHub, usando o token de acesso pessoal.
-    O token deve estar definido em st.secrets["GITHUB_TOKEN"] ou como variável de ambiente.
-    """
     try:
         github_token = st.secrets.get("GITHUB_TOKEN", os.getenv("GITHUB_TOKEN"))
         if not github_token:
-            st.error("❌ Token do GitHub não configurado. Adicione em Secrets ou variável de ambiente.")
+            st.error("❌ Token do GitHub não configurado.")
             return None
 
-        # Cria Excel em memória
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name="PRINCIPAL", index=False)
         content = output.getvalue()
         encoded_content = base64.b64encode(content).decode("utf-8")
 
-        # Busca SHA atual do arquivo (necessário para atualizar)
         headers = {"Authorization": f"token {github_token}"}
         resp_get = requests.get(EXCEL_API, headers=headers)
         sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
 
-        # Commit da atualização
         commit_message = f"Atualização automática via Streamlit ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
-        data = {
-            "message": commit_message,
-            "content": encoded_content,
-            "sha": sha
-        }
+        data = {"message": commit_message, "content": encoded_content, "sha": sha}
         resp_put = requests.put(EXCEL_API, headers=headers, json=data)
 
         if resp_put.status_code in (200, 201):
@@ -84,7 +65,6 @@ def salvar_dados(df):
         else:
             st.error(f"Erro ao salvar no GitHub: {resp_put.status_code}")
             st.text(resp_put.text)
-
     except Exception as e:
         st.error(f"Erro ao tentar salvar: {e}")
         return None
@@ -95,10 +75,8 @@ def parse_data_possivel(valor):
     if pd.isna(valor):
         return None
     try:
-        # Se for número (Excel serial)
         if isinstance(valor, (int, float)):
             return datetime.fromordinal(datetime(1900, 1, 1).toordinal() + int(valor) - 2)
-        # Se for texto
         for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
             try:
                 return datetime.strptime(str(valor).strip(), fmt)
@@ -107,7 +85,6 @@ def parse_data_possivel(valor):
         return None
     except:
         return None
-
 
 # =========================
 # LOGIN
@@ -175,33 +152,28 @@ def pagina_renovacao():
     df = carregar_dados()
     hoje = datetime.today()
 
-    # Converte a coluna DATA_FIM para datetime
     df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
-
-    # Filtra contratos vencidos
     vencidas = df[df["DATA_FIM_DT"].notna() & (df["DATA_FIM_DT"].dt.date < hoje.date())]
 
     if vencidas.empty:
         st.info("Nenhum contrato vencido.")
         return
 
-    # Mostra a tabela de vencidas
-    st.dataframe(vencidas)
+    # Mostrar tabela sem colunas auxiliares
+    vencidas_mostrar = vencidas.drop(columns=["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"], errors='ignore')
+    st.dataframe(vencidas_mostrar)
 
-    # Seleção de linha pelo índice
     linha = st.number_input(
         "Linha a renovar ou excluir (número da tabela acima)",
         min_value=0,
         max_value=len(df)-1,
         step=1
     )
-
     nova_data = st.date_input("Nova Data")
     novo_sla = st.text_input("Novo SLA (opcional)")
 
     col1, col2 = st.columns(2)
 
-    # Botão para atualizar contrato
     with col1:
         if st.button("Atualizar Contrato"):
             try:
@@ -215,17 +187,15 @@ def pagina_renovacao():
             except Exception as e:
                 st.error(f"Erro ao atualizar: {e}")
 
-    # Botão para excluir contrato
     with col2:
         if st.button("❌ Excluir Contrato"):
             try:
                 idx = int(linha)
-                df = df.drop(idx).reset_index(drop=True)  # Remove a linha selecionada
+                df = df.drop(idx).reset_index(drop=True)
                 salvar_dados(df)
                 st.success("Contrato excluído com sucesso!")
             except Exception as e:
                 st.error(f"Erro ao excluir: {e}")
-
 
 # =========================
 # RELATÓRIO
@@ -235,20 +205,18 @@ def pagina_relatorio():
     df = carregar_dados()
     hoje = datetime.today()
 
-    # Cria coluna auxiliar com datas convertidas
     df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
-
-    # Filtra contratos vencidos
     vencidas = df[df["DATA_FIM_DT"].notna() & (df["DATA_FIM_DT"].dt.date < hoje.date())]
 
     if vencidas.empty:
         st.info("Nenhum contrato vencido.")
         return
 
-    st.dataframe(vencidas)
+    vencidas_mostrar = vencidas.drop(columns=["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"], errors='ignore')
+    st.dataframe(vencidas_mostrar)
     st.download_button(
         "⬇️ Baixar Relatório",
-        vencidas.to_csv(index=False).encode("utf-8"),
+        vencidas_mostrar.to_csv(index=False).encode("utf-8"),
         "relatorio.csv",
         "text/csv"
     )
