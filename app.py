@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 import requests
 import base64
@@ -21,13 +21,10 @@ EXCEL_API_URL = f"{REPO_API_BASE}/SALDO_PECAS.xlsx"
 LOGS_RAW_URL = f"{REPO_RAW_BASE}/logs.csv"
 LOGS_API_URL = f"{REPO_API_BASE}/logs.csv"
 
+
 # =========================
 # CREDENCIAIS / USUÁRIOS (via secrets)
 # =========================
-# No secrets.toml você deve ter as seções:
-# [token] GITHUB_TOKEN = "..."
-# [auth] ... users ...
-# [permissoes] ... mapping ...
 RAW_USERS = st.secrets["auth"]
 USUARIOS = {u: hashlib.sha256(RAW_USERS[u].encode()).hexdigest() for u in RAW_USERS}
 
@@ -37,12 +34,15 @@ PERMISSOES = {
     for user in RAW_PERMISSOES
 }
 
+
 def ufs_do_usuario(usuario):
     return PERMISSOES.get(usuario, [])
+
 
 def is_admin(usuario):
     ufs = ufs_do_usuario(usuario)
     return "ALL" in ufs
+
 
 # =========================
 # UTILITÁRIOS: datas e parsing
@@ -54,8 +54,8 @@ def parse_data_possivel(valor):
         return None
     try:
         if isinstance(valor, (int, float)):
-            # Excel numeric date fallback
             return datetime.fromordinal(datetime(1900, 1, 1).toordinal() + int(valor) - 2)
+
         for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
             try:
                 return datetime.strptime(str(valor).strip(), fmt)
@@ -65,35 +65,23 @@ def parse_data_possivel(valor):
     except:
         return None
 
-def formatar_data_para_planilha(dt):
-    if isinstance(dt, datetime):
-        return dt.strftime("%d/%m/%y")
-    if pd.isna(dt) or dt is None:
-        return ""
-    return str(dt)
 
 # =========================
 # FUNÇÕES GERAIS DE I/O COM GITHUB
 # =========================
 def get_github_token():
-    token = None
-    try:
-        t = st.secrets.get("token")
-        if isinstance(t, dict):
-            token = t.get("GITHUB_TOKEN") or t.get("github_token")
-        elif isinstance(t, str):
-            token = t
-    except Exception:
-        token = None
+    return (
+        st.secrets.get("token", {}).get("GITHUB_TOKEN")
+        if isinstance(st.secrets.get("token"), dict)
+        else st.secrets.get("GITHUB_TOKEN")
+        or os.getenv("GITHUB_TOKEN")
+    )
 
-    if not token:
-        token = st.secrets.get("GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
-
-    return token
 
 def _get_headers():
     token = get_github_token()
     return {"Authorization": f"token {token}"} if token else {}
+
 
 @st.cache_data(ttl=60)
 def carregar_planilha_principal():
@@ -109,6 +97,7 @@ def carregar_planilha_principal():
         st.error(f"Erro ao tentar carregar planilha: {e}")
         return pd.DataFrame()
 
+
 def salvar_planilha_principal(df):
     try:
         token = get_github_token()
@@ -119,28 +108,32 @@ def salvar_planilha_principal(df):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name="PRINCIPAL", index=False)
-        content = output.getvalue()
-        encoded_content = base64.b64encode(content).decode("utf-8")
 
+        encoded_content = base64.b64encode(output.getvalue()).decode("utf-8")
         headers = {"Authorization": f"token {token}"}
+
         resp_get = requests.get(EXCEL_API_URL, headers=headers)
         sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
 
-        commit_message = f"Atualização automática SALDO_PECAS ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
-        data = {"message": commit_message, "content": encoded_content}
+        data = {
+            "message": f"Atualização automática SALDO_PECAS ({datetime.now().strftime('%d/%m/%Y %H:%M')})",
+            "content": encoded_content
+        }
+
         if sha:
             data["sha"] = sha
 
         resp_put = requests.put(EXCEL_API_URL, headers=headers, json=data)
+
         if resp_put.status_code in (200, 201):
             return True
         else:
             st.error(f"Erro ao salvar planilha no GitHub: {resp_put.status_code}")
-            st.text(resp_put.text)
             return False
     except Exception as e:
         st.error(f"Erro ao tentar salvar planilha: {e}")
         return False
+
 
 # =========================
 # LOGS: carregar / salvar / registrar
@@ -151,14 +144,14 @@ def carregar_logs():
     try:
         r = requests.get(LOGS_RAW_URL, headers=headers)
         if r.status_code == 200:
-            df = pd.read_csv(io.BytesIO(r.content))
-            return df
+            return pd.read_csv(io.BytesIO(r.content))
         else:
-            cols = ["data_hora","usuario","acao","detalhes","antes","depois"]
+            cols = ["data_hora", "usuario", "acao", "detalhes", "antes", "depois"]
             return pd.DataFrame(columns=cols)
-    except Exception:
-        cols = ["data_hora","usuario","acao","detalhes","antes","depois"]
+    except:
+        cols = ["data_hora", "usuario", "acao", "detalhes", "antes", "depois"]
         return pd.DataFrame(columns=cols)
+
 
 def salvar_logs(df_log):
     try:
@@ -167,28 +160,26 @@ def salvar_logs(df_log):
             st.error("❌ Token do GitHub não configurado para salvar logs.")
             return False
 
-        csv_bytes = df_log.to_csv(index=False).encode("utf-8")
-        encoded = base64.b64encode(csv_bytes).decode("utf-8")
-
+        encoded = base64.b64encode(df_log.to_csv(index=False).encode("utf-8")).decode("utf-8")
         headers = {"Authorization": f"token {token}"}
+
         resp_get = requests.get(LOGS_API_URL, headers=headers)
         sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
 
-        commit_message = f"Atualização automática logs ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
-        data = {"message": commit_message, "content": encoded}
+        data = {
+            "message": f"Atualização automática logs ({datetime.now().strftime('%d/%m/%Y %H:%M')})",
+            "content": encoded
+        }
+
         if sha:
             data["sha"] = sha
 
         resp_put = requests.put(LOGS_API_URL, headers=headers, json=data)
-        if resp_put.status_code in (200, 201):
-            return True
-        else:
-            st.error(f"Erro ao salvar logs no GitHub: {resp_put.status_code}")
-            st.text(resp_put.text)
-            return False
+        return resp_put.status_code in (200, 201)
     except Exception as e:
         st.error(f"Erro ao tentar salvar logs: {e}")
         return False
+
 
 def registrar_log(usuario, acao, detalhes="", antes=None, depois=None, salvar_remote=True):
     try:
@@ -198,62 +189,46 @@ def registrar_log(usuario, acao, detalhes="", antes=None, depois=None, salvar_re
             "usuario": usuario,
             "acao": acao,
             "detalhes": detalhes,
-            "antes": json.dumps(antes, ensure_ascii=False) if antes is not None else "",
-            "depois": json.dumps(depois, ensure_ascii=False) if depois is not None else ""
+            "antes": json.dumps(antes, ensure_ascii=False) if antes else "",
+            "depois": json.dumps(depois, ensure_ascii=False) if depois else ""
         }
+
         df_log = pd.concat([df_log, pd.DataFrame([nova])], ignore_index=True)
+
         if salvar_remote:
-            ok = salvar_logs(df_log)
-            if not ok:
-                try:
-                    df_log.to_csv("logs_local.csv", index=False)
-                except:
-                    pass
+            salvar_logs(df_log)
+
         return True
-    except Exception as e:
-        print("Erro registrar_log:", e)
+    except:
         return False
 
+
 # =========================
-# AUTENTICAÇÃO / LOGIN (com verificar_senha) e rerun seguro
+# AUTENTICAÇÃO / LOGIN
 # =========================
-def verificar_senha(hash_salvo, senha_digitada):
-    return hashlib.sha256(senha_digitada.encode()).hexdigest() == hash_salvo
+def tentar_login():
+    usuario = st.session_state.get("usuario_input", "").strip()
+    senha = st.session_state.get("senha_input", "").strip()
+
+    if not usuario or not senha:
+        return
+
+    senha_hash = hashlib.sha256(senha.encode()).hexdigest()
+    if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
+        st.session_state["usuario"] = usuario
+        registrar_log(usuario, "LOGIN", "Login bem-sucedido")
+        st.success("Login realizado com sucesso!")
+    else:
+        registrar_log(usuario, "LOGIN_FAIL", "Tentativa de login falhou", antes={"usuario": usuario})
+        st.error("Usuário ou senha incorretos.")
+
 
 def login_page():
     st.title("🔐 Login")
+    st.text_input("Usuário", key="usuario_input")
+    st.text_input("Senha", type="password", key="senha_input", on_change=tentar_login)
+    st.button("Entrar", on_click=tentar_login)
 
-    # garante flag para rerun fora do formulário
-    if "fazer_rerun" not in st.session_state:
-        st.session_state["fazer_rerun"] = False
-
-    with st.form(key="form_login"):
-        usuario_input = st.text_input("Usuário")
-        senha_input = st.text_input("Senha", type="password")
-        enviar = st.form_submit_button("Entrar")
-
-    if enviar:
-        usuario = usuario_input.strip()
-        senha = senha_input.strip()
-        if not usuario or not senha:
-            st.error("Informe usuário e senha.")
-        else:
-            hash_salvo = USUARIOS.get(usuario)
-            if hash_salvo and verificar_senha(hash_salvo, senha):
-                st.session_state["usuario"] = usuario
-                st.session_state["pagina"] = "Home"
-                # registrar com o usuario efetivamente logado
-                registrar_log(st.session_state["usuario"], "LOGIN", "Login bem-sucedido")
-                # seta flag para rerun fora do form
-                st.session_state["fazer_rerun"] = True
-            else:
-                st.error("Usuário ou senha incorretos.")
-                registrar_log(usuario if usuario else "unknown", "LOGIN_FAIL", "Tentativa de login falhou", antes={"usuario": usuario})
-
-    # realizar rerun fora do form para evitar erro de streamlit
-    if st.session_state.get("fazer_rerun"):
-        st.session_state["fazer_rerun"] = False
-        st.rerun()
 
 # =========================
 # FILTRAGEM POR USUÁRIO
@@ -262,9 +237,8 @@ def filtrar_por_usuario(df, usuario):
     ufs = ufs_do_usuario(usuario)
     if "ALL" in ufs:
         return df
-    if "UF" not in df.columns:
-        return df.iloc[0:0]
-    return df[df["UF"].isin(ufs)]
+    return df[df["UF"].isin(ufs)] if "UF" in df.columns else df.iloc[0:0]
+
 
 # =========================
 # PÁGINA: CADASTRO
@@ -276,10 +250,7 @@ def pagina_cadastro():
     st.subheader("🧩 Cadastro de Peças")
     df = carregar_planilha_principal()
 
-    if "ALL" in ufs_user:
-        lista_uf = ["AM","BA","CE","DF","GO","MA","MG","PA","PE","RJ","TO"]
-    else:
-        lista_uf = ufs_user
+    lista_uf = ufs_user if "ALL" not in ufs_user else ["AM","BA","CE","DF","GO","MA","MG","PA","PE","RJ","TO"]
 
     uf = st.selectbox("UF", lista_uf)
     fru = st.text_input("FRU (7 caracteres)")
@@ -297,6 +268,7 @@ def pagina_cadastro():
         if not uf or not fru or not serial or not data_contrato:
             st.error("Campos UF, FRU, SERIAL e Data são obrigatórios.")
             return
+
         if len(fru) != 7:
             st.error("FRU deve ter 7 caracteres.")
             return
@@ -316,40 +288,48 @@ def pagina_cadastro():
             "STATUS": "DENTRO"
         }
 
-        registrar_log(st.session_state["usuario"], "CADASTRO", f"FRU {fru.upper()}", antes=None, depois=nova_linha)
+        registrar_log(usuario, "CADASTRO", f"FRU {fru.upper()}", depois=nova_linha)
+
         df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
         ok = salvar_planilha_principal(df)
-        if ok:
-            st.success("Peça cadastrada com sucesso!")
-        else:
-            st.error("Houve um erro ao salvar. Tente novamente.")
+
+        st.success("Peça cadastrada com sucesso!" if ok else "Erro ao salvar.")
+
 
 # =========================
 # PÁGINA: RENOVAÇÃO
 # =========================
 def pagina_renovacao():
     usuario = st.session_state["usuario"]
-    st.subheader("🔄 Renovação de Contrato")
 
+    st.subheader("🔄 Renovação de Contrato")
     df_full = carregar_planilha_principal()
     df = filtrar_por_usuario(df_full, usuario)
+
     if df.empty:
         st.info("Nenhuma peça cadastrada para sua região.")
         return
 
     hoje = datetime.today()
     df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
+
     vencidas = df[df["DATA_FIM_DT"].notna() & (df["DATA_FIM_DT"].dt.date < hoje.date())]
 
     if vencidas.empty:
         st.info("Nenhum contrato vencido.")
         return
 
-    vencidas_mostrar = vencidas.drop(columns=["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"], errors='ignore')
+    vencidas_mostrar = vencidas.drop(columns=["STATUS", "DATA_VERIFICACAO", "DATA_FIM_DT"], errors='ignore')
     st.dataframe(vencidas_mostrar)
 
     indices_relativos = list(vencidas.index)
-    idx_pos = st.number_input("Selecione posição (número da linha mostrada acima)", min_value=0, max_value=len(indices_relativos)-1, step=1)
+
+    idx_pos = st.number_input(
+        "Selecione posição (número da linha mostrada acima)",
+        min_value=0,
+        max_value=len(indices_relativos) - 1,
+        step=1
+    )
 
     nova_data = st.date_input("Nova Data")
     novo_sla = st.text_input("Novo SLA (opcional)")
@@ -358,17 +338,19 @@ def pagina_renovacao():
         try:
             idx_abs = indices_relativos[int(idx_pos)]
             antes = df_full.loc[idx_abs].to_dict()
+
             df_full.loc[idx_abs, "DATA_FIM"] = nova_data.strftime("%d/%m/%y")
             df_full.loc[idx_abs, "STATUS"] = "DENTRO"
+
             if novo_sla:
                 df_full.loc[idx_abs, "SLA"] = novo_sla.upper()
+
             depois = df_full.loc[idx_abs].to_dict()
-            registrar_log(st.session_state["usuario"], "RENOVACAO", f"Linha {idx_abs}", antes=antes, depois=depois)
+            registrar_log(usuario, "RENOVACAO", f"Linha {idx_abs}", antes=antes, depois=depois)
+
             ok = salvar_planilha_principal(df_full)
-            if ok:
-                st.success("Contrato atualizado com sucesso!")
-            else:
-                st.error("Erro ao salvar atualização.")
+            st.success("Contrato atualizado com sucesso!" if ok else "Erro ao salvar atualização.")
+
         except Exception as e:
             st.error(f"Erro ao atualizar: {e}")
 
@@ -376,148 +358,91 @@ def pagina_renovacao():
         try:
             idx_abs = indices_relativos[int(idx_pos)]
             antes = df_full.loc[idx_abs].to_dict()
+
             df_full = df_full.drop(idx_abs).reset_index(drop=True)
-            registrar_log(st.session_state["usuario"], "EXCLUSAO", f"Linha {idx_abs}", antes=antes, depois=None)
+
+            registrar_log(usuario, "EXCLUSAO", f"Linha {idx_abs}", antes=antes)
+
             ok = salvar_planilha_principal(df_full)
-            if ok:
-                st.success("Contrato excluído com sucesso!")
-            else:
-                st.error("Erro ao salvar exclusão.")
+            st.success("Contrato excluído com sucesso!" if ok else "Erro ao salvar exclusão.")
+
         except Exception as e:
             st.error(f"Erro ao excluir: {e}")
 
+
 # =========================
-# PÁGINA: VISUALIZAR TUDO (COM EDIÇÃO)
+# PÁGINA: VISUALIZAR TUDO
 # =========================
 def pagina_visualizar_tudo():
-    usuario_logado = st.session_state["usuario"]
-    st.title("📄 Todos os Registros")
+    usuario = st.session_state["usuario"]
 
-    df_full = carregar_planilha_principal()
-    if df_full.empty:
+    st.subheader("📋 Todos os registros (sua UF)")
+    df = filtrar_por_usuario(carregar_planilha_principal(), usuario)
+
+    if df.empty:
         st.info("Nenhum registro encontrado.")
         return
 
-    admin = is_admin(usuario_logado)
+    df_mostrar = df.drop(columns=["STATUS", "DATA_VERIFICACAO"], errors='ignore')
 
-    # df que será mostrado para seleção (filtrado para usuário se não admin)
-    if admin:
-        df_mostrar = df_full.copy()
+    st.dataframe(df_mostrar)
+
+    formato = st.radio("Formato para download", ["CSV", "TXT"])
+
+    if formato == "CSV":
+        if st.button("⬇️ Exportar CSV"):
+            registrar_log(usuario, "EXPORTACAO", f"CSV - {len(df_mostrar)} linhas")
+            st.download_button("Download CSV", df_mostrar.to_csv(index=False), "dados.csv")
     else:
-        df_mostrar = filtrar_por_usuario(df_full, usuario_logado)
+        if st.button("⬇️ Exportar TXT"):
+            registrar_log(usuario, "EXPORTACAO", f"TXT - {len(df_mostrar)} linhas")
+            st.download_button("Download TXT", df_mostrar.to_csv(index=False, sep="\t"), "dados.txt")
 
-    if df_mostrar.empty:
-        st.info("Nenhum registro encontrado para sua UF.")
-        return
-
-    # Mostrar tabela (com índices absolutos para referência)
-    st.write("### Registros encontrados (índice à esquerda é o índice da planilha):")
-    st.dataframe(df_mostrar, use_container_width=True)
-
-    st.write("---")
-    st.write("### ✏ Escolher linha para editar (somente suas linhas se não for admin):")
-
-    # Lista de índices disponíveis (índices absolutos)
-    ids = list(df_mostrar.index)
-    id_escolhido = st.selectbox("Selecione o índice da linha:", ids)
-
-    # Segurança: garantir que, se não admin, a linha pertença ao filtro (já garantido), mas reforçar:
-    if not admin:
-        # linha pertence a df_mostrar que já está filtrado
-        pass
-
-    # Carregar linha absoluta
-    linha = df_full.loc[id_escolhido].copy()
-
-    st.write("### Editar registro selecionado:")
-    # Campos que existem no seu sheet (ajustados ao seu modelo)
-    descricao_val = linha.get("DESCRICAO", "")
-    maquinas_val = linha.get("MAQUINAS", "")
-    cliente_val = linha.get("CLIENTE", "")
-    data_fim_val = parse_data_possivel(linha.get("DATA_FIM"))
-    sla_val = linha.get("SLA", "")
-    status_val = linha.get("STATUS", "")
-
-    with st.form(key=f"form_editar_{id_escolhido}"):
-        nova_descricao = st.text_input("DESCRICAO", value=str(descricao_val))
-        novas_maquinas = st.text_input("MAQUINAS", value=str(maquinas_val))
-        novo_cliente = st.text_input("CLIENTE", value=str(cliente_val))
-        # data input: se conseguimos parsear, mostramos date_input, senão mostramos text_input
-        if data_fim_val:
-            novo_data_fim = st.date_input("DATA_FIM", value=data_fim_val)
-        else:
-            # default para hoje se não parsear
-            novo_data_fim = st.date_input("DATA_FIM")
-        novo_sla = st.text_input("SLA", value=str(sla_val))
-        novo_status = st.text_input("STATUS", value=str(status_val))
-
-        botao_salvar = st.form_submit_button("💾 Salvar alterações")
-
-    if botao_salvar:
-        try:
-            antes = df_full.loc[id_escolhido].to_dict()
-
-            # atualizar df_full (índice absoluto)
-            df_full.loc[id_escolhido, "DESCRICAO"] = str(nova_descricao).upper()
-            df_full.loc[id_escolhido, "MAQUINAS"] = str(novas_maquinas).upper()
-            df_full.loc[id_escolhido, "CLIENTE"] = str(novo_cliente)
-            # formata DATA_FIM como dd/mm/yy
-            df_full.loc[id_escolhido, "DATA_FIM"] = formatar_data_para_planilha(novo_data_fim)
-            df_full.loc[id_escolhido, "SLA"] = str(novo_sla).upper()
-            df_full.loc[id_escolhido, "STATUS"] = str(novo_status).upper()
-            df_full.loc[id_escolhido, "DATA_VERIFICACAO"] = datetime.now().strftime("%d/%m/%y")
-
-            depois = df_full.loc[id_escolhido].to_dict()
-
-            ok = salvar_planilha_principal(df_full)
-            if ok:
-                registrar_log(usuario_logado, "EDITOU_REGISTRO", f"Índice {id_escolhido}", antes=antes, depois=depois)
-                st.success("Registro atualizado com sucesso!")
-                st.rerun()
-            else:
-                st.error("Erro ao salvar atualização. Confira token/configuração.")
-        except Exception as e:
-            st.error(f"Erro ao salvar: {e}")
 
 # =========================
-# PÁGINA: RELATÓRIO (VENCIDAS)
+# PÁGINA: RELATÓRIO VENCIDAS
 # =========================
 def pagina_relatorio():
     usuario = st.session_state["usuario"]
-    st.subheader("📄 Relatório de Peças Vencidas (sua UF)")
 
+    st.subheader("📄 Relatório de Peças Vencidas")
     df = filtrar_por_usuario(carregar_planilha_principal(), usuario)
+
     if df.empty:
-        st.info("Nenhum registro encontrado para sua UF.")
+        st.info("Nenhum registro encontrado.")
         return
 
     hoje = datetime.today()
     df["DATA_FIM_DT"] = df["DATA_FIM"].apply(parse_data_possivel)
+
     vencidas = df[df["DATA_FIM_DT"].notna() & (df["DATA_FIM_DT"].dt.date < hoje.date())]
 
     if vencidas.empty:
         st.info("Nenhum contrato vencido.")
         return
 
-    vencidas_mostrar = vencidas.drop(columns=["STATUS","DATA_VERIFICACAO","DATA_FIM_DT"], errors='ignore')
+    vencidas_mostrar = vencidas.drop(columns=["STATUS", "DATA_VERIFICACAO", "DATA_FIM_DT"], errors='ignore')
     st.dataframe(vencidas_mostrar)
 
-    if st.button("⬇️ Baixar Relatório CSV (vencidas)"):
-        registrar_log(st.session_state["usuario"], "EXPORTACAO_RELATORIO_VENCIDAS", f"Exportou relatório vencidas ({len(vencidas_mostrar)} linhas)")
-        st.download_button("Download CSV", vencidas_mostrar.to_csv(index=False).encode("utf-8"), "relatorio_vencidas.csv")
+    if st.button("⬇️ Baixar Relatório CSV"):
+        registrar_log(usuario, "EXPORTAR_RELATORIO", f"{len(vencidas_mostrar)} linhas")
+        st.download_button("Download CSV", vencidas_mostrar.to_csv(index=False), "relatorio_vencidas.csv")
+
 
 # =========================
-# PÁGINA: LOGS (APENAS ADMIN)
+# PÁGINA: LOGS (ADMIN)
 # =========================
 def pagina_logs():
     usuario = st.session_state["usuario"]
+
     if not is_admin(usuario):
         st.error("⛔ Acesso restrito aos administradores.")
         return
 
-    st.subheader("📜 Logs do Sistema (detalhado)")
+    st.subheader("📜 Logs do Sistema")
 
     df_log = carregar_logs()
+
     if df_log.empty:
         st.info("Nenhum log disponível.")
         return
@@ -530,78 +455,40 @@ def pagina_logs():
     st.dataframe(df_show)
 
     if st.button("⬇️ Exportar Logs (CSV)"):
-        registrar_log(st.session_state["usuario"], "EXPORTAR_LOGS", f"Exportou logs ({len(df_log)} linhas)")
-        st.download_button("Download Logs CSV", df_log.to_csv(index=False).encode("utf-8"), "logs.csv")
+        registrar_log(usuario, "EXPORTAR_LOGS")
+        st.download_button("Download Logs CSV", df_log.to_csv(index=False), "logs.csv")
+
 
 # =========================
-# PÁGINA: HOME / DASHBOARD (vertical - opção B)
-# =========================
-def pagina_home():
-    usuario = st.session_state["usuario"]
-    st.title(f"🏠 Bem-vindo, {usuario}!")
-    st.write("Escolha uma das opções abaixo:")
-
-    if st.button("🧩 Cadastro", use_container_width=True):
-        st.session_state["pagina"] = "Cadastro"
-        st.rerun()
-
-    if st.button("🔄 Renovação", use_container_width=True):
-        st.session_state["pagina"] = "Renovação"
-        st.rerun()
-
-    if st.button("📄 Relatório (Vencidas)", use_container_width=True):
-        st.session_state["pagina"] = "Relatório"
-        st.rerun()
-
-    if st.button("📋 Visualizar Tudo", use_container_width=True):
-        st.session_state["pagina"] = "Visualizar Tudo"
-        st.rerun()
-
-    if is_admin(usuario):
-        st.markdown("---")
-        st.subheader("🔧 Administração")
-        if st.button("📜 Logs do Sistema (Admins)", use_container_width=True):
-            st.session_state["pagina"] = "Logs"
-            st.rerun()
-        st.write("Admins podem ver e exportar todos os logs.")
-
-    st.markdown("---")
-    if st.button("🚪 Sair", use_container_width=True):
-        registrar_log(st.session_state.get("usuario", "unknown"), "LOGOUT", "Usuário saiu")
-        st.session_state.clear()
-        st.info("Você saiu. Atualize a página para entrar novamente.")
-        st.rerun()
-
-# =========================
-# MENU PRINCIPAL (Navegação via pagina)
+# MENU PRINCIPAL
 # =========================
 def main_page():
     usuario = st.session_state["usuario"]
-    if "pagina" not in st.session_state:
-        st.session_state["pagina"] = "Home"
 
     st.sidebar.title(f"👋 Olá, {usuario}")
-    if st.sidebar.button("⬅️ Voltar ao início"):
-        st.session_state["pagina"] = "Home"
-        st.rerun()
 
-    pagina_atual = st.session_state["pagina"]
+    opcoes = ["Cadastro", "Renovação", "Relatório", "Visualizar Tudo"]
+    if is_admin(usuario):
+        opcoes.append("Logs")
+    opcoes.append("Sair")
 
-    if pagina_atual == "Home":
-        pagina_home()
-    elif pagina_atual == "Cadastro":
+    escolha = st.sidebar.radio("Menu", opcoes)
+
+    if escolha == "Cadastro":
         pagina_cadastro()
-    elif pagina_atual == "Renovação":
+    elif escolha == "Renovação":
         pagina_renovacao()
-    elif pagina_atual == "Relatório":
+    elif escolha == "Relatório":
         pagina_relatorio()
-    elif pagina_atual == "Visualizar Tudo":
+    elif escolha == "Visualizar Tudo":
         pagina_visualizar_tudo()
-    elif pagina_atual == "Logs":
+    elif escolha == "Logs":
         pagina_logs()
-    else:
-        st.session_state["pagina"] = "Home"
-        st.rerun()
+    elif escolha == "Sair":
+        registrar_log(usuario, "LOGOUT")
+        st.session_state.clear()
+        st.info("Você saiu. Atualize a página para entrar novamente.")
+
 
 # =========================
 # EXECUÇÃO DO APP
