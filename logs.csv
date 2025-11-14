@@ -9,4 +9,4 @@ data_hora,usuario,acao,detalhes,antes,depois
 2025-11-14 18:58:05,rafaell,LOGIN,Login bem-sucedido,,
 2025-11-14 19:04:31,olobato,LOGIN,Login bem-sucedido,,
 2025-11-14 19:18:17,rafaell,LOGIN,Login bem-sucedido,,
-2025-11-14 19:26:31,alexroc,LOGIN,Login bem-sucedido,,
+2025-11-14 19:26:52,alexroc,CADASTRO,FRU 00P0098,,"{""UF"": ""GO"", ""FRU"": ""00P0098"", ""SUB1"": """", ""SUB2"": """", ""SUB3"": """", ""DESCRICAO"": ""A"", ""MAQUINAS"": ""A"", ""CLIENTE"": ""A - (A 01/11/25_12H) - GO"", ""DATA_FIM"": ""01/11/25"", ""SLA"": ""12H"", ""DATA_VERIFICACAO"": ""14/11/25"", ""STATUS"": ""DENTRO""}"
