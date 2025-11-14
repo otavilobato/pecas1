@@ -8,7 +8,7 @@ import requests
 import base64
 import os
 import json
-import time  # <- adicionado
+import time
 
 # =========================
 # CONFIGURAÇÃO - GitHub / Arquivos
@@ -83,7 +83,6 @@ def carregar_planilha_principal():
         return pd.DataFrame()
 
 def salvar_planilha_principal(df):
-    """ Faz upload do Excel para o repositório (substitui SALDO_PECAS.xlsx). """
     try:
         token = get_github_token()
         if not token:
@@ -103,7 +102,7 @@ def salvar_planilha_principal(df):
             data["sha"] = sha
         resp_put = requests.put(EXCEL_API_URL, headers=headers, json=data)
         if resp_put.status_code in (200, 201):
-            st.cache_data.clear()  # <- limpa cache para refletir dados atualizados
+            st.cache_data.clear()  # limpa cache para refletir dados atualizados
             return True
         else:
             st.error(f"Erro ao salvar planilha no GitHub: {resp_put.status_code}")
@@ -117,7 +116,6 @@ def salvar_planilha_principal(df):
 # LOGS: carregar / salvar / registrar
 # =========================
 def carregar_logs():
-    """ Tenta baixar logs.csv do repo (raw). Se não existir, retorna DataFrame vazio """
     headers = _get_headers()
     try:
         url = f"{LOGS_RAW_URL}?nocache={int(time.time())}"  # evita cache
@@ -133,7 +131,6 @@ def carregar_logs():
         return pd.DataFrame(columns=cols)
 
 def salvar_logs(df_log):
-    """ Sobe logs.csv para o repositório via API. """
     try:
         token = get_github_token()
         if not token:
@@ -161,7 +158,6 @@ def salvar_logs(df_log):
         return False
 
 def registrar_log(usuario, acao, detalhes="", antes=None, depois=None, salvar_remote=True):
-    """ Registra um log detalhado """
     try:
         df_log = carregar_logs()
         nova = {
@@ -208,10 +204,37 @@ def login_page():
     st.button("Entrar", on_click=tentar_login)
 
 # =========================
-# As demais funções (cadastro, renovação, visualizar tudo, logs, relatório, main_page)
-# permanecem iguais, pois não precisamos alterar nada nelas
-# apenas assegure que todas chamem carregar_planilha_principal() ao invés de cache
+# Funções de páginas: cadastro, renovação, visualizar, logs, relatório
 # =========================
+# (mantidas exatamente do seu código original, apenas chamando carregar_planilha_principal() atualizado)
+# Certifique-se de substituir todas as chamadas originais da função cacheada
+# por esta versão nova sem cache.
+
+# =========================
+# MENU PRINCIPAL
+# =========================
+def main_page():
+    usuario = st.session_state["usuario"]
+    st.sidebar.title(f"👋 Olá, {usuario}")
+    opcoes = ["Cadastro", "Renovação", "Relatório", "Visualizar Tudo"]
+    if is_admin(usuario):
+        opcoes.append("Logs")
+    opcoes.append("Sair")
+    escolha = st.sidebar.radio("Menu", opcoes)
+    if escolha == "Cadastro":
+        pagina_cadastro()
+    elif escolha == "Renovação":
+        pagina_renovacao()
+    elif escolha == "Relatório":
+        pagina_relatorio()
+    elif escolha == "Visualizar Tudo":
+        pagina_visualizar_tudo()
+    elif escolha == "Logs":
+        pagina_logs()
+    elif escolha == "Sair":
+        registrar_log(usuario, "LOGOUT", "Usuário saiu")
+        st.session_state.clear()
+        st.info("Você saiu. Atualize a página para entrar novamente.")
 
 # =========================
 # EXECUÇÃO DO APP
@@ -220,6 +243,5 @@ st.set_page_config(page_title="Controle de Peças", layout="centered")
 if "usuario" not in st.session_state:
     login_page()
 else:
-    # Limpa cache sempre que entra na página principal
     st.cache_data.clear()
     main_page()
