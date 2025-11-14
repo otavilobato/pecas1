@@ -208,7 +208,7 @@ def registrar_log(usuario, acao, detalhes="", antes=None, depois=None, salvar_re
         return False
 
 # =========================
-# AUTENTICAÇÃO / LOGIN (com verificar_senha)
+# AUTENTICAÇÃO / LOGIN (com verificar_senha) e rerun seguro
 # =========================
 def verificar_senha(hash_salvo, senha_digitada):
     return hashlib.sha256(senha_digitada.encode()).hexdigest() == hash_salvo
@@ -216,7 +216,10 @@ def verificar_senha(hash_salvo, senha_digitada):
 def login_page():
     st.title("🔐 Login")
 
-    # formulario de login para permitir ENTER
+    # garante flag para rerun fora do formulário
+    if "fazer_rerun" not in st.session_state:
+        st.session_state["fazer_rerun"] = False
+
     with st.form(key="form_login"):
         usuario_input = st.text_input("Usuário")
         senha_input = st.text_input("Senha", type="password")
@@ -227,17 +230,23 @@ def login_page():
         senha = senha_input.strip()
         if not usuario or not senha:
             st.error("Informe usuário e senha.")
-            return
-        hash_salvo = USUARIOS.get(usuario)
-        if hash_salvo and verificar_senha(hash_salvo, senha):
-            st.session_state["usuario"] = usuario
-            st.session_state["pagina"] = "Home"
-            # registrar com o usuario efetivamente logado
-            registrar_log(usuario, "LOGIN", "Login bem-sucedido")
-            st.experimental_rerun()
         else:
-            st.error("Usuário ou senha incorretos.")
-            registrar_log(usuario if usuario else "unknown", "LOGIN_FAIL", "Tentativa de login falhou", antes={"usuario": usuario})
+            hash_salvo = USUARIOS.get(usuario)
+            if hash_salvo and verificar_senha(hash_salvo, senha):
+                st.session_state["usuario"] = usuario
+                st.session_state["pagina"] = "Home"
+                # registrar com o usuario efetivamente logado
+                registrar_log(st.session_state["usuario"], "LOGIN", "Login bem-sucedido")
+                # seta flag para rerun fora do form
+                st.session_state["fazer_rerun"] = True
+            else:
+                st.error("Usuário ou senha incorretos.")
+                registrar_log(usuario if usuario else "unknown", "LOGIN_FAIL", "Tentativa de login falhou", antes={"usuario": usuario})
+
+    # realizar rerun fora do form para evitar erro de streamlit
+    if st.session_state.get("fazer_rerun"):
+        st.session_state["fazer_rerun"] = False
+        st.rerun()
 
 # =========================
 # FILTRAGEM POR USUÁRIO
@@ -459,26 +468,26 @@ def pagina_home():
 
     if st.button("🧩 Cadastro", use_container_width=True):
         st.session_state["pagina"] = "Cadastro"
-        st.experimental_rerun()
+        st.rerun()
 
     if st.button("🔄 Renovação", use_container_width=True):
         st.session_state["pagina"] = "Renovação"
-        st.experimental_rerun()
+        st.rerun()
 
     if st.button("📄 Relatório (Vencidas)", use_container_width=True):
         st.session_state["pagina"] = "Relatório"
-        st.experimental_rerun()
+        st.rerun()
 
     if st.button("📋 Visualizar Tudo", use_container_width=True):
         st.session_state["pagina"] = "Visualizar Tudo"
-        st.experimental_rerun()
+        st.rerun()
 
     if is_admin(usuario):
         st.markdown("---")
         st.subheader("🔧 Administração")
         if st.button("📜 Logs do Sistema (Admins)", use_container_width=True):
             st.session_state["pagina"] = "Logs"
-            st.experimental_rerun()
+            st.rerun()
         st.write("Admins podem ver e exportar todos os logs.")
 
     st.markdown("---")
@@ -486,7 +495,7 @@ def pagina_home():
         registrar_log(st.session_state.get("usuario", "unknown"), "LOGOUT", "Usuário saiu")
         st.session_state.clear()
         st.info("Você saiu. Atualize a página para entrar novamente.")
-        st.experimental_rerun()
+        st.rerun()
 
 # =========================
 # MENU PRINCIPAL (Navegação via pagina)
@@ -499,7 +508,7 @@ def main_page():
     st.sidebar.title(f"👋 Olá, {usuario}")
     if st.sidebar.button("⬅️ Voltar ao início"):
         st.session_state["pagina"] = "Home"
-        st.experimental_rerun()
+        st.rerun()
 
     pagina_atual = st.session_state["pagina"]
 
@@ -517,7 +526,7 @@ def main_page():
         pagina_logs()
     else:
         st.session_state["pagina"] = "Home"
-        st.experimental_rerun()
+        st.rerun()
 
 # =========================
 # EXECUÇÃO DO APP
