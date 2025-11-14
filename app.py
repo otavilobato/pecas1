@@ -65,6 +65,13 @@ def parse_data_possivel(valor):
     except:
         return None
 
+def formatar_data_para_planilha(dt):
+    if isinstance(dt, datetime):
+        return dt.strftime("%d/%m/%y")
+    if pd.isna(dt) or dt is None:
+        return ""
+    return str(dt)
+
 # =========================
 # FUNÇÕES GERAIS DE I/O COM GITHUB
 # =========================
@@ -380,67 +387,97 @@ def pagina_renovacao():
             st.error(f"Erro ao excluir: {e}")
 
 # =========================
-# PÁGINA: VISUALIZAR TUDO
+# PÁGINA: VISUALIZAR TUDO (COM EDIÇÃO)
 # =========================
 def pagina_visualizar_tudo():
+    usuario_logado = st.session_state["usuario"]
     st.title("📄 Todos os Registros")
 
-    usuario_logado = st.session_state["usuario"]
-    admin = usuario_logado in ADMINISTRADORES
+    df_full = carregar_planilha_principal()
+    if df_full.empty:
+        st.info("Nenhum registro encontrado.")
+        return
 
-    df = carregar_planilha()
+    admin = is_admin(usuario_logado)
 
-    # Se não é admin → só vê seus próprios registros
-    if not admin:
-        df = df[df["usuario"] == usuario_logado]
+    # df que será mostrado para seleção (filtrado para usuário se não admin)
+    if admin:
+        df_mostrar = df_full.copy()
+    else:
+        df_mostrar = filtrar_por_usuario(df_full, usuario_logado)
 
-    st.write("### Registros encontrados:")
-    st.dataframe(df, use_container_width=True)
+    if df_mostrar.empty:
+        st.info("Nenhum registro encontrado para sua UF.")
+        return
+
+    # Mostrar tabela (com índices absolutos para referência)
+    st.write("### Registros encontrados (índice à esquerda é o índice da planilha):")
+    st.dataframe(df_mostrar, use_container_width=True)
 
     st.write("---")
-    st.write("### ✏ Escolher linha para editar:")
+    st.write("### ✏ Escolher linha para editar (somente suas linhas se não for admin):")
 
-    if df.empty:
-        st.info("Nenhum registro disponível para edição.")
-        return
+    # Lista de índices disponíveis (índices absolutos)
+    ids = list(df_mostrar.index)
+    id_escolhido = st.selectbox("Selecione o índice da linha:", ids)
 
-    # Lista de IDs para seleção
-    ids = df.index.tolist()
-    id_escolhido = st.selectbox("Selecione o ID da linha:", ids)
+    # Segurança: garantir que, se não admin, a linha pertença ao filtro (já garantido), mas reforçar:
+    if not admin:
+        # linha pertence a df_mostrar que já está filtrado
+        pass
 
-    # Carregar linha selecionada
-    linha = df.loc[id_escolhido].copy()
+    # Carregar linha absoluta
+    linha = df_full.loc[id_escolhido].copy()
 
-    # Bloqueio adicional de segurança
-    if not admin and linha["usuario"] != usuario_logado:
-        st.error("⚠ Você não pode editar registros de outro usuário.")
-        return
+    st.write("### Editar registro selecionado:")
+    # Campos que existem no seu sheet (ajustados ao seu modelo)
+    descricao_val = linha.get("DESCRICAO", "")
+    maquinas_val = linha.get("MAQUINAS", "")
+    cliente_val = linha.get("CLIENTE", "")
+    data_fim_val = parse_data_possivel(linha.get("DATA_FIM"))
+    sla_val = linha.get("SLA", "")
+    status_val = linha.get("STATUS", "")
 
-    st.write("### Editar Registro:")
+    with st.form(key=f"form_editar_{id_escolhido}"):
+        nova_descricao = st.text_input("DESCRICAO", value=str(descricao_val))
+        novas_maquinas = st.text_input("MAQUINAS", value=str(maquinas_val))
+        novo_cliente = st.text_input("CLIENTE", value=str(cliente_val))
+        # data input: se conseguimos parsear, mostramos date_input, senão mostramos text_input
+        if data_fim_val:
+            novo_data_fim = st.date_input("DATA_FIM", value=data_fim_val)
+        else:
+            # default para hoje se não parsear
+            novo_data_fim = st.date_input("DATA_FIM")
+        novo_sla = st.text_input("SLA", value=str(sla_val))
+        novo_status = st.text_input("STATUS", value=str(status_val))
 
-    with st.form("form_editar"):
-        novo_nome = st.text_input("Nome", linha["nome"])
-        nova_peca = st.text_input("Peça", linha["peca"])
-        nova_quantidade = st.number_input("Quantidade", min_value=0, value=int(linha["quantidade"]))
-        nova_observacao = st.text_area("Observação", linha.get("observacao", ""))
+        botao_salvar = st.form_submit_button("💾 Salvar alterações")
 
-        salvar = st.form_submit_button("💾 Salvar alterações", type="primary")
+    if botao_salvar:
+        try:
+            antes = df_full.loc[id_escolhido].to_dict()
 
-    if salvar:
-        # Atualiza dataframe
-        df.at[id_escolhido, "nome"] = novo_nome
-        df.at[id_escolhido, "peca"] = nova_peca
-        df.at[id_escolhido, "quantidade"] = nova_quantidade
-        df.at[id_escolhido, "observacao"] = nova_observacao
-        df.at[id_escolhido, "usuario"] = linha["usuario"]  # Mantém o usuário original
+            # atualizar df_full (índice absoluto)
+            df_full.loc[id_escolhido, "DESCRICAO"] = str(nova_descricao).upper()
+            df_full.loc[id_escolhido, "MAQUINAS"] = str(novas_maquinas).upper()
+            df_full.loc[id_escolhido, "CLIENTE"] = str(novo_cliente)
+            # formata DATA_FIM como dd/mm/yy
+            df_full.loc[id_escolhido, "DATA_FIM"] = formatar_data_para_planilha(novo_data_fim)
+            df_full.loc[id_escolhido, "SLA"] = str(novo_sla).upper()
+            df_full.loc[id_escolhido, "STATUS"] = str(novo_status).upper()
+            df_full.loc[id_escolhido, "DATA_VERIFICACAO"] = datetime.now().strftime("%d/%m/%y")
 
-        # Salvar no Excel
-        salvar_planilha(df)
+            depois = df_full.loc[id_escolhido].to_dict()
 
-        registrar_log(usuario_logado, "EDITOU REGISTRO", f"Linha ID {id_escolhido}")
-
-        st.success("Registro atualizado com sucesso!")
-        st.rerun()
+            ok = salvar_planilha_principal(df_full)
+            if ok:
+                registrar_log(usuario_logado, "EDITOU_REGISTRO", f"Índice {id_escolhido}", antes=antes, depois=depois)
+                st.success("Registro atualizado com sucesso!")
+                st.rerun()
+            else:
+                st.error("Erro ao salvar atualização. Confira token/configuração.")
+        except Exception as e:
+            st.error(f"Erro ao salvar: {e}")
 
 # =========================
 # PÁGINA: RELATÓRIO (VENCIDAS)
