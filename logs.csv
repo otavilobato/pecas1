@@ -9,4 +9,4 @@ data_hora,usuario,acao,detalhes,antes,depois
 2025-11-14 18:58:05,rafaell,LOGIN,Login bem-sucedido,,
 2025-11-14 19:04:31,olobato,LOGIN,Login bem-sucedido,,
 2025-11-14 19:18:17,rafaell,LOGIN,Login bem-sucedido,,
-2025-11-14 19:22:19,rafaell,CADASTRO,FRU 1234567,,"{""UF"": ""DF"", ""FRU"": ""1234567"", ""SUB1"": """", ""SUB2"": """", ""SUB3"": """", ""DESCRICAO"": ""TESTE"", ""MAQUINAS"": ""DS8K"", ""CLIENTE"": ""SICOOB - (78KKT90 14/11/25_24/7) - DF"", ""DATA_FIM"": ""14/11/25"", ""SLA"": ""24/7"", ""DATA_VERIFICACAO"": ""14/11/25"", ""STATUS"": ""DENTRO""}"
+2025-11-14 19:24:59,olobato,LOGIN,Login bem-sucedido,,
