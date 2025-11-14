@@ -383,26 +383,64 @@ def pagina_renovacao():
 # PÁGINA: VISUALIZAR TUDO
 # =========================
 def pagina_visualizar_tudo():
-    usuario = st.session_state["usuario"]
-    st.subheader("📋 Todos os registros (sua UF)")
+    st.title("📄 Todos os Registros")
 
-    df = filtrar_por_usuario(carregar_planilha_principal(), usuario)
+    usuario_logado = st.session_state["usuario"]
+    admin = usuario_logado in ADMINISTRADORES
+
+    df = carregar_planilha()
+
+    # Se não é admin → só vê seus próprios registros
+    if not admin:
+        df = df[df["usuario"] == usuario_logado]
+
+    st.write("### Registros encontrados:")
+    st.dataframe(df, use_container_width=True)
+
+    st.write("---")
+    st.write("### ✏ Escolher linha para editar:")
+
     if df.empty:
-        st.info("Nenhum registro encontrado para sua UF.")
+        st.info("Nenhum registro disponível para edição.")
         return
 
-    df_mostrar = df.drop(columns=["STATUS","DATA_VERIFICACAO"], errors='ignore')
-    st.dataframe(df_mostrar)
+    # Lista de IDs para seleção
+    ids = df.index.tolist()
+    id_escolhido = st.selectbox("Selecione o ID da linha:", ids)
 
-    formato = st.radio("Formato para download", ["CSV","TXT"])
-    if formato == "CSV":
-        if st.button("⬇️ Exportar CSV (registros visíveis)"):
-            registrar_log(st.session_state["usuario"], "EXPORTACAO", f"Exportou CSV ({len(df_mostrar)} linhas)")
-            st.download_button("Download CSV", df_mostrar.to_csv(index=False).encode("utf-8"), "dados.csv")
-    else:
-        if st.button("⬇️ Exportar TXT (registros visíveis)"):
-            registrar_log(st.session_state["usuario"], "EXPORTACAO", f"Exportou TXT ({len(df_mostrar)} linhas)")
-            st.download_button("Download TXT", df_mostrar.to_csv(index=False, sep="\t").encode("utf-8"), "dados.txt")
+    # Carregar linha selecionada
+    linha = df.loc[id_escolhido].copy()
+
+    # Bloqueio adicional de segurança
+    if not admin and linha["usuario"] != usuario_logado:
+        st.error("⚠ Você não pode editar registros de outro usuário.")
+        return
+
+    st.write("### Editar Registro:")
+
+    with st.form("form_editar"):
+        novo_nome = st.text_input("Nome", linha["nome"])
+        nova_peca = st.text_input("Peça", linha["peca"])
+        nova_quantidade = st.number_input("Quantidade", min_value=0, value=int(linha["quantidade"]))
+        nova_observacao = st.text_area("Observação", linha.get("observacao", ""))
+
+        salvar = st.form_submit_button("💾 Salvar alterações", type="primary")
+
+    if salvar:
+        # Atualiza dataframe
+        df.at[id_escolhido, "nome"] = novo_nome
+        df.at[id_escolhido, "peca"] = nova_peca
+        df.at[id_escolhido, "quantidade"] = nova_quantidade
+        df.at[id_escolhido, "observacao"] = nova_observacao
+        df.at[id_escolhido, "usuario"] = linha["usuario"]  # Mantém o usuário original
+
+        # Salvar no Excel
+        salvar_planilha(df)
+
+        registrar_log(usuario_logado, "EDITOU REGISTRO", f"Linha ID {id_escolhido}")
+
+        st.success("Registro atualizado com sucesso!")
+        st.rerun()
 
 # =========================
 # PÁGINA: RELATÓRIO (VENCIDAS)
