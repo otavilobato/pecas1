@@ -9,4 +9,4 @@ data_hora,usuario,acao,detalhes,antes,depois
 2025-11-14 18:58:05,rafaell,LOGIN,Login bem-sucedido,,
 2025-11-14 19:04:31,olobato,LOGIN,Login bem-sucedido,,
 2025-11-14 19:18:17,rafaell,LOGIN,Login bem-sucedido,,
-2025-11-14 19:26:14,alexroc,LOGIN_FAIL,Tentativa de login falhou,"{""usuario"": ""alexroc""}",
+2025-11-14 19:26:18,alexroc,LOGIN_FAIL,Tentativa de login falhou,"{""usuario"": ""alexroc""}",
