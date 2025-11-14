@@ -16,3 +16,4 @@ data_hora,usuario,acao,detalhes,antes,depois
 2025-11-14 20:18:42,rafaell,CADASTRO,FRU DF00001,,"{""UF"": ""DF"", ""FRU"": ""DF00001"", ""SUB1"": """", ""SUB2"": """", ""SUB3"": """", ""DESCRICAO"": ""TESTE1718"", ""MAQUINAS"": ""T"", ""CLIENTE"": ""T - (T 03/11/25_12H) - DF"", ""DATA_FIM"": ""03/11/25"", ""SLA"": ""12H"", ""DATA_VERIFICACAO"": ""14/11/25"", ""STATUS"": ""DENTRO""}"
 2025-11-14 20:35:58,rafaell,LOGOUT,Usuário saiu,,
 2025-11-14 20:40:49,rafaell,LOGIN,Login bem-sucedido,,
+2025-11-14 20:41:39,rafaell,CADASTRO,FRU DF00002,,"{""UF"": ""DF"", ""FRU"": ""DF00002"", ""SUB1"": """", ""SUB2"": """", ""SUB3"": """", ""DESCRICAO"": ""X"", ""MAQUINAS"": ""X"", ""CLIENTE"": ""X - (X 03/11/25_12H) - DF"", ""DATA_FIM"": ""03/11/25"", ""SLA"": ""12H"", ""DATA_VERIFICACAO"": ""14/11/25"", ""STATUS"": ""DENTRO""}"
