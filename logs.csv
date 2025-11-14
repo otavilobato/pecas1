@@ -5,4 +5,4 @@ data_hora,usuario,acao,detalhes,antes,depois
 2025-11-14 13:56:45,olobato,LOGIN,Login bem-sucedido,,
 2025-11-14 14:01:04,olobato,LOGOUT,Usuário saiu,,
 2025-11-14 14:17:24,olobato,LOGIN,Login bem-sucedido,,
-2025-11-14 18:48:50,gladeira,LOGIN,Login bem-sucedido,,
+2025-11-14 18:49:14,gladeira,LOGOUT,Usuário saiu,,
