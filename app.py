@@ -54,6 +54,7 @@ def parse_data_possivel(valor):
         return None
     try:
         if isinstance(valor, (int, float)):
+            # Excel date number handling (approx)
             return datetime.fromordinal(datetime(1900, 1, 1).toordinal() + int(valor) - 2)
         for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
             try:
@@ -69,7 +70,22 @@ def parse_data_possivel(valor):
 # =========================
 def get_github_token():
     # Busca token tanto em st.secrets quanto em variável de ambiente (compatibilidade)
-    return st.secrets.get("token", {}).get("GITHUB_TOKEN") if isinstance(st.secrets.get("token"), dict) else st.secrets.get("token", {}).get("GITHUB_TOKEN") if isinstance(st.secrets.get("token"), dict) else st.secrets.get("GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN") or st.secrets.get("GITHUB_TOKEN")
+    # suportar diferentes formatos no secrets
+    token = None
+    # st.secrets["token"] pode ser dict ou chave direta dependendo do secrets.toml
+    try:
+        t = st.secrets.get("token")
+        if isinstance(t, dict):
+            token = t.get("GITHUB_TOKEN") or t.get("github_token")
+        elif isinstance(t, str):
+            token = t
+    except Exception:
+        token = None
+
+    if not token:
+        token = st.secrets.get("GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
+
+    return token
 
 def _get_headers():
     token = get_github_token()
@@ -224,6 +240,8 @@ def tentar_login():
     senha_hash = hashlib.sha256(senha.encode()).hexdigest()
     if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
         st.session_state["usuario"] = usuario
+        # define página inicial
+        st.session_state["pagina"] = "Home"
         st.success("Login realizado com sucesso!")
         registrar_log(usuario, "LOGIN", "Login bem-sucedido")
     else:
@@ -233,7 +251,8 @@ def tentar_login():
 def login_page():
     st.title("🔐 Login")
     st.text_input("Usuário", key="usuario_input")
-    st.text_input("Senha", type="password", key="senha_input", on_change=tentar_login)
+    # on_change chama a função quando o campo for alterado - mantemos apenas o on_click no botão
+    st.text_input("Senha", type="password", key="senha_input")
     st.button("Entrar", on_click=tentar_login)
 
 # =========================
@@ -453,33 +472,75 @@ def pagina_logs():
         st.download_button("Download Logs CSV", df_log.to_csv(index=False).encode("utf-8"), "logs.csv")
 
 # =========================
-# MENU PRINCIPAL
+# PÁGINA: HOME / DASHBOARD INICIAL
 # =========================
-def main_page():
+def pagina_home():
     usuario = st.session_state["usuario"]
-    st.sidebar.title(f"👋 Olá, {usuario}")
+    st.title(f"🏠 Bem-vindo, {usuario}!")
+    st.write("Escolha uma das opções abaixo:")
 
-    opcoes = ["Cadastro", "Renovação", "Relatório", "Visualizar Tudo"]
+    # Layout em 2x2 responsivo
+    col1, col2 = st.columns(2)
+    col3, col4 = st.columns(2)
+
+    if col1.button("🧩 Cadastro de Peças", use_container_width=True):
+        st.session_state["pagina"] = "Cadastro"
+
+    if col2.button("🔄 Renovação de Contrato", use_container_width=True):
+        st.session_state["pagina"] = "Renovação"
+
+    if col3.button("📄 Relatório de Peças Vencidas", use_container_width=True):
+        st.session_state["pagina"] = "Relatório"
+
+    if col4.button("📋 Visualizar Tudo", use_container_width=True):
+        st.session_state["pagina"] = "Visualizar Tudo"
+
+    st.markdown("---")
+    # área de ações administrativas
     if is_admin(usuario):
-        opcoes.append("Logs")
-    opcoes.append("Sair")
+        st.subheader("🔧 Administração")
+        if st.button("📜 Ver Logs do Sistema (Admins)", use_container_width=True):
+            st.session_state["pagina"] = "Logs"
+        st.write("Admins podem ver e exportar todos os logs.")
 
-    escolha = st.sidebar.radio("Menu", opcoes)
-
-    if escolha == "Cadastro":
-        pagina_cadastro()
-    elif escolha == "Renovação":
-        pagina_renovacao()
-    elif escolha == "Relatório":
-        pagina_relatorio()
-    elif escolha == "Visualizar Tudo":
-        pagina_visualizar_tudo()
-    elif escolha == "Logs":
-        pagina_logs()
-    elif escolha == "Sair":
+    st.markdown("---")
+    if st.button("🚪 Sair", use_container_width=True):
         registrar_log(usuario, "LOGOUT", "Usuário saiu")
         st.session_state.clear()
         st.info("Você saiu. Atualize a página para entrar novamente.")
+
+# =========================
+# MENU PRINCIPAL (Navegação única via pagina)
+# =========================
+def main_page():
+    usuario = st.session_state["usuario"]
+    # Garantir que a página atual exista
+    if "pagina" not in st.session_state:
+        st.session_state["pagina"] = "Home"
+
+    # Header lateral com saudação + voltar ao início
+    st.sidebar.title(f"👋 Olá, {usuario}")
+    if st.sidebar.button("⬅️ Voltar ao início"):
+        st.session_state["pagina"] = "Home"
+
+    pagina_atual = st.session_state["pagina"]
+
+    if pagina_atual == "Home":
+        pagina_home()
+    elif pagina_atual == "Cadastro":
+        pagina_cadastro()
+    elif pagina_atual == "Renovação":
+        pagina_renovacao()
+    elif pagina_atual == "Relatório":
+        pagina_relatorio()
+    elif pagina_atual == "Visualizar Tudo":
+        pagina_visualizar_tudo()
+    elif pagina_atual == "Logs":
+        pagina_logs()
+    else:
+        # caso inválido, volta para home
+        st.session_state["pagina"] = "Home"
+        pagina_home()
 
 # =========================
 # EXECUÇÃO DO APP
