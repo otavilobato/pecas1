@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime
 import io
 import requests
 import base64
@@ -54,7 +54,7 @@ def parse_data_possivel(valor):
         return None
     try:
         if isinstance(valor, (int, float)):
-            # Excel date number handling (approx)
+            # Excel numeric date fallback
             return datetime.fromordinal(datetime(1900, 1, 1).toordinal() + int(valor) - 2)
         for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
             try:
@@ -69,10 +69,7 @@ def parse_data_possivel(valor):
 # FUNÇÕES GERAIS DE I/O COM GITHUB
 # =========================
 def get_github_token():
-    # Busca token tanto em st.secrets quanto em variável de ambiente (compatibilidade)
-    # suportar diferentes formatos no secrets
     token = None
-    # st.secrets["token"] pode ser dict ou chave direta dependendo do secrets.toml
     try:
         t = st.secrets.get("token")
         if isinstance(t, dict):
@@ -106,9 +103,6 @@ def carregar_planilha_principal():
         return pd.DataFrame()
 
 def salvar_planilha_principal(df):
-    """
-    Faz upload do Excel para o repositório (substitui SALDO_PECAS.xlsx).
-    """
     try:
         token = get_github_token()
         if not token:
@@ -122,7 +116,6 @@ def salvar_planilha_principal(df):
         encoded_content = base64.b64encode(content).decode("utf-8")
 
         headers = {"Authorization": f"token {token}"}
-        # pega SHA atual (se existir)
         resp_get = requests.get(EXCEL_API_URL, headers=headers)
         sha = resp_get.json().get("sha") if resp_get.status_code == 200 else None
 
@@ -147,9 +140,6 @@ def salvar_planilha_principal(df):
 # =========================
 @st.cache_data(ttl=20)
 def carregar_logs():
-    """
-    Tenta baixar logs.csv do repo (raw). Se não existir, retorna DataFrame vazio com colunas definidas.
-    """
     headers = _get_headers()
     try:
         r = requests.get(LOGS_RAW_URL, headers=headers)
@@ -157,7 +147,6 @@ def carregar_logs():
             df = pd.read_csv(io.BytesIO(r.content))
             return df
         else:
-            # cria DataFrame vazio com colunas do nosso esquema
             cols = ["data_hora","usuario","acao","detalhes","antes","depois"]
             return pd.DataFrame(columns=cols)
     except Exception:
@@ -165,9 +154,6 @@ def carregar_logs():
         return pd.DataFrame(columns=cols)
 
 def salvar_logs(df_log):
-    """
-    Sobe logs.csv para o repositório via API.
-    """
     try:
         token = get_github_token()
         if not token:
@@ -198,10 +184,6 @@ def salvar_logs(df_log):
         return False
 
 def registrar_log(usuario, acao, detalhes="", antes=None, depois=None, salvar_remote=True):
-    """
-    Registra um log detalhado com campos:
-    - data_hora, usuario, acao, detalhes, antes (json), depois (json)
-    """
     try:
         df_log = carregar_logs()
         nova = {
@@ -213,47 +195,49 @@ def registrar_log(usuario, acao, detalhes="", antes=None, depois=None, salvar_re
             "depois": json.dumps(depois, ensure_ascii=False) if depois is not None else ""
         }
         df_log = pd.concat([df_log, pd.DataFrame([nova])], ignore_index=True)
-        # salvar local cache (não necessário) e remoto
         if salvar_remote:
             ok = salvar_logs(df_log)
             if not ok:
-                # tenta apenas salvar localmente (arquivo temporário)
                 try:
                     df_log.to_csv("logs_local.csv", index=False)
                 except:
                     pass
         return True
     except Exception as e:
-        # não quebrar app por logs
         print("Erro registrar_log:", e)
         return False
 
 # =========================
-# AUTENTICAÇÃO / LOGIN
+# AUTENTICAÇÃO / LOGIN (com verificar_senha)
 # =========================
-def tentar_login():
-    usuario = st.session_state.get("usuario_input", "").strip()
-    senha = st.session_state.get("senha_input", "").strip()
-    if not usuario or not senha:
-        return
-
-    senha_hash = hashlib.sha256(senha.encode()).hexdigest()
-    if usuario in USUARIOS and USUARIOS[usuario] == senha_hash:
-        st.session_state["usuario"] = usuario
-        # define página inicial
-        st.session_state["pagina"] = "Home"
-        st.success("Login realizado com sucesso!")
-        registrar_log(usuario, "LOGIN", "Login bem-sucedido")
-    else:
-        st.error("Usuário ou senha incorretos.")
-        registrar_log(usuario, "LOGIN_FAIL", "Tentativa de login falhou", antes={"usuario": usuario})
+def verificar_senha(hash_salvo, senha_digitada):
+    return hashlib.sha256(senha_digitada.encode()).hexdigest() == hash_salvo
 
 def login_page():
     st.title("🔐 Login")
-    st.text_input("Usuário", key="usuario_input")
-    # on_change chama a função quando o campo for alterado - mantemos apenas o on_click no botão
-    st.text_input("Senha", type="password", key="senha_input")
-    st.button("Entrar", on_click=tentar_login)
+
+    # formulario de login para permitir ENTER
+    with st.form(key="form_login"):
+        usuario_input = st.text_input("Usuário")
+        senha_input = st.text_input("Senha", type="password")
+        enviar = st.form_submit_button("Entrar")
+
+    if enviar:
+        usuario = usuario_input.strip()
+        senha = senha_input.strip()
+        if not usuario or not senha:
+            st.error("Informe usuário e senha.")
+            return
+        hash_salvo = USUARIOS.get(usuario)
+        if hash_salvo and verificar_senha(hash_salvo, senha):
+            st.session_state["usuario"] = usuario
+            st.session_state["pagina"] = "Home"
+            # registrar com o usuario efetivamente logado
+            registrar_log(usuario, "LOGIN", "Login bem-sucedido")
+            st.experimental_rerun()
+        else:
+            st.error("Usuário ou senha incorretos.")
+            registrar_log(usuario if usuario else "unknown", "LOGIN_FAIL", "Tentativa de login falhou", antes={"usuario": usuario})
 
 # =========================
 # FILTRAGEM POR USUÁRIO
@@ -262,7 +246,6 @@ def filtrar_por_usuario(df, usuario):
     ufs = ufs_do_usuario(usuario)
     if "ALL" in ufs:
         return df
-    # garantir colunas existentes
     if "UF" not in df.columns:
         return df.iloc[0:0]
     return df[df["UF"].isin(ufs)]
@@ -277,7 +260,6 @@ def pagina_cadastro():
     st.subheader("🧩 Cadastro de Peças")
     df = carregar_planilha_principal()
 
-    # UF restrita ao usuário, exceto admins
     if "ALL" in ufs_user:
         lista_uf = ["AM","BA","CE","DF","GO","MA","MG","PA","PE","RJ","TO"]
     else:
@@ -318,8 +300,7 @@ def pagina_cadastro():
             "STATUS": "DENTRO"
         }
 
-        # registrar antes (n/a) e depois (linha)
-        registrar_log(usuario, "CADASTRO", f"FRU {fru.upper()}", antes=None, depois=nova_linha)
+        registrar_log(st.session_state["usuario"], "CADASTRO", f"FRU {fru.upper()}", antes=None, depois=nova_linha)
         df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
         ok = salvar_planilha_principal(df)
         if ok:
@@ -351,7 +332,6 @@ def pagina_renovacao():
     vencidas_mostrar = vencidas.drop(columns=["DATA_FIM_DT", "STATUS", "DATA_VERIFICACAO"], errors='ignore')
     st.dataframe(vencidas_mostrar)
 
-    # O índice aqui é relativo ao df (filtrado). Precisamos mapear para índice do df_full
     indices_relativos = list(vencidas.index)
     idx_pos = st.number_input("Selecione posição (número da linha mostrada acima)", min_value=0, max_value=len(indices_relativos)-1, step=1)
 
@@ -360,7 +340,6 @@ def pagina_renovacao():
 
     if st.button("Atualizar Contrato"):
         try:
-            # índice absoluto no df_full
             idx_abs = indices_relativos[int(idx_pos)]
             antes = df_full.loc[idx_abs].to_dict()
             df_full.loc[idx_abs, "DATA_FIM"] = nova_data.strftime("%d/%m/%y")
@@ -368,7 +347,7 @@ def pagina_renovacao():
             if novo_sla:
                 df_full.loc[idx_abs, "SLA"] = novo_sla.upper()
             depois = df_full.loc[idx_abs].to_dict()
-            registrar_log(usuario, "RENOVACAO", f"Linha {idx_abs}", antes=antes, depois=depois)
+            registrar_log(st.session_state["usuario"], "RENOVACAO", f"Linha {idx_abs}", antes=antes, depois=depois)
             ok = salvar_planilha_principal(df_full)
             if ok:
                 st.success("Contrato atualizado com sucesso!")
@@ -382,7 +361,7 @@ def pagina_renovacao():
             idx_abs = indices_relativos[int(idx_pos)]
             antes = df_full.loc[idx_abs].to_dict()
             df_full = df_full.drop(idx_abs).reset_index(drop=True)
-            registrar_log(usuario, "EXCLUSAO", f"Linha {idx_abs}", antes=antes, depois=None)
+            registrar_log(st.session_state["usuario"], "EXCLUSAO", f"Linha {idx_abs}", antes=antes, depois=None)
             ok = salvar_planilha_principal(df_full)
             if ok:
                 st.success("Contrato excluído com sucesso!")
@@ -409,11 +388,11 @@ def pagina_visualizar_tudo():
     formato = st.radio("Formato para download", ["CSV","TXT"])
     if formato == "CSV":
         if st.button("⬇️ Exportar CSV (registros visíveis)"):
-            registrar_log(usuario, "EXPORTACAO", f"Exportou CSV ({len(df_mostrar)} linhas)")
+            registrar_log(st.session_state["usuario"], "EXPORTACAO", f"Exportou CSV ({len(df_mostrar)} linhas)")
             st.download_button("Download CSV", df_mostrar.to_csv(index=False).encode("utf-8"), "dados.csv")
     else:
         if st.button("⬇️ Exportar TXT (registros visíveis)"):
-            registrar_log(usuario, "EXPORTACAO", f"Exportou TXT ({len(df_mostrar)} linhas)")
+            registrar_log(st.session_state["usuario"], "EXPORTACAO", f"Exportou TXT ({len(df_mostrar)} linhas)")
             st.download_button("Download TXT", df_mostrar.to_csv(index=False, sep="\t").encode("utf-8"), "dados.txt")
 
 # =========================
@@ -440,7 +419,7 @@ def pagina_relatorio():
     st.dataframe(vencidas_mostrar)
 
     if st.button("⬇️ Baixar Relatório CSV (vencidas)"):
-        registrar_log(usuario, "EXPORTACAO_RELATORIO_VENCIDAS", f"Exportou relatório vencidas ({len(vencidas_mostrar)} linhas)")
+        registrar_log(st.session_state["usuario"], "EXPORTACAO_RELATORIO_VENCIDAS", f"Exportou relatório vencidas ({len(vencidas_mostrar)} linhas)")
         st.download_button("Download CSV", vencidas_mostrar.to_csv(index=False).encode("utf-8"), "relatorio_vencidas.csv")
 
 # =========================
@@ -459,7 +438,6 @@ def pagina_logs():
         st.info("Nenhum log disponível.")
         return
 
-    # mostrar em ordem decrescente (mais recente primeiro)
     try:
         df_show = df_log.sort_values("data_hora", ascending=False)
     except:
@@ -468,60 +446,60 @@ def pagina_logs():
     st.dataframe(df_show)
 
     if st.button("⬇️ Exportar Logs (CSV)"):
-        registrar_log(usuario, "EXPORTAR_LOGS", f"Exportou logs ({len(df_log)} linhas)")
+        registrar_log(st.session_state["usuario"], "EXPORTAR_LOGS", f"Exportou logs ({len(df_log)} linhas)")
         st.download_button("Download Logs CSV", df_log.to_csv(index=False).encode("utf-8"), "logs.csv")
 
 # =========================
-# PÁGINA: HOME / DASHBOARD INICIAL
+# PÁGINA: HOME / DASHBOARD (vertical - opção B)
 # =========================
 def pagina_home():
     usuario = st.session_state["usuario"]
     st.title(f"🏠 Bem-vindo, {usuario}!")
     st.write("Escolha uma das opções abaixo:")
 
-    # Layout em 2x2 responsivo
-    col1, col2 = st.columns(2)
-    col3, col4 = st.columns(2)
-
-    if col1.button("🧩 Cadastro de Peças", use_container_width=True):
+    if st.button("🧩 Cadastro", use_container_width=True):
         st.session_state["pagina"] = "Cadastro"
+        st.experimental_rerun()
 
-    if col2.button("🔄 Renovação de Contrato", use_container_width=True):
+    if st.button("🔄 Renovação", use_container_width=True):
         st.session_state["pagina"] = "Renovação"
+        st.experimental_rerun()
 
-    if col3.button("📄 Relatório de Peças Vencidas", use_container_width=True):
+    if st.button("📄 Relatório (Vencidas)", use_container_width=True):
         st.session_state["pagina"] = "Relatório"
+        st.experimental_rerun()
 
-    if col4.button("📋 Visualizar Tudo", use_container_width=True):
+    if st.button("📋 Visualizar Tudo", use_container_width=True):
         st.session_state["pagina"] = "Visualizar Tudo"
+        st.experimental_rerun()
 
-    st.markdown("---")
-    # área de ações administrativas
     if is_admin(usuario):
+        st.markdown("---")
         st.subheader("🔧 Administração")
-        if st.button("📜 Ver Logs do Sistema (Admins)", use_container_width=True):
+        if st.button("📜 Logs do Sistema (Admins)", use_container_width=True):
             st.session_state["pagina"] = "Logs"
+            st.experimental_rerun()
         st.write("Admins podem ver e exportar todos os logs.")
 
     st.markdown("---")
     if st.button("🚪 Sair", use_container_width=True):
-        registrar_log(usuario, "LOGOUT", "Usuário saiu")
+        registrar_log(st.session_state.get("usuario", "unknown"), "LOGOUT", "Usuário saiu")
         st.session_state.clear()
         st.info("Você saiu. Atualize a página para entrar novamente.")
+        st.experimental_rerun()
 
 # =========================
-# MENU PRINCIPAL (Navegação única via pagina)
+# MENU PRINCIPAL (Navegação via pagina)
 # =========================
 def main_page():
     usuario = st.session_state["usuario"]
-    # Garantir que a página atual exista
     if "pagina" not in st.session_state:
         st.session_state["pagina"] = "Home"
 
-    # Header lateral com saudação + voltar ao início
     st.sidebar.title(f"👋 Olá, {usuario}")
     if st.sidebar.button("⬅️ Voltar ao início"):
         st.session_state["pagina"] = "Home"
+        st.experimental_rerun()
 
     pagina_atual = st.session_state["pagina"]
 
@@ -538,9 +516,8 @@ def main_page():
     elif pagina_atual == "Logs":
         pagina_logs()
     else:
-        # caso inválido, volta para home
         st.session_state["pagina"] = "Home"
-        pagina_home()
+        st.experimental_rerun()
 
 # =========================
 # EXECUÇÃO DO APP
