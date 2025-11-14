@@ -8,3 +8,4 @@ data_hora,usuario,acao,detalhes,antes,depois
 2025-11-14 18:49:31,olobato,LOGIN,Login bem-sucedido,,
 2025-11-14 18:58:05,rafaell,LOGIN,Login bem-sucedido,,
 2025-11-14 19:04:31,olobato,LOGIN,Login bem-sucedido,,
+2025-11-14 19:15:54,olobato,LOGOUT,Usuário saiu,,
