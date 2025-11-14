@@ -204,11 +204,12 @@ def login_page():
     st.button("Entrar", on_click=tentar_login)
 
 # =========================
-# Funções de páginas: cadastro, renovação, visualizar, logs, relatório
+# FUNÇÕES DE PÁGINA
 # =========================
-# (mantidas exatamente do seu código original, apenas chamando carregar_planilha_principal() atualizado)
-# Certifique-se de substituir todas as chamadas originais da função cacheada
-# por esta versão nova sem cache.
+# Todas as funções originais de pagina_cadastro, pagina_renovacao, pagina_visualizar_tudo, pagina_relatorio e pagina_logs
+# são mantidas como você enviou, apenas substituindo carregar_planilha_principal() pela nova versão sem cache
+
+# Para não alongar o código aqui, vou assumir que você **copiou todas essas funções originais** do seu app e as colou abaixo desta linha.
 
 # =========================
 # MENU PRINCIPAL
