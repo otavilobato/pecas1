@@ -20,4 +20,4 @@ data_hora,usuario,acao,detalhes,antes,depois
 2025-11-14 20:51:08,rafaell,LOGIN,Login bem-sucedido,,
 2025-11-15 01:37:12,rafaell,LOGOUT,Usuário saiu,,
 2025-11-15 16:47:38,olobato,LOGIN,Login bem-sucedido,,
-2025-11-15 17:03:31,olobato,CADASTRO,FRU PA15110,,"{""UF"": ""PA"", ""FRU"": ""PA15110"", ""SUB1"": """", ""SUB2"": """", ""SUB3"": """", ""DESCRICAO"": ""HD 300 TB"", ""MAQUINAS"": ""44445"", ""CLIENTE"": ""LIDER - (9809876 01/11/25_12H) - PA"", ""DATA_FIM"": ""01/11/25"", ""SLA"": ""12H"", ""DATA_VERIFICACAO"": ""15/11/25"", ""STATUS"": ""DENTRO""}"
+2025-11-15 17:03:40,olobato,LOGOUT,Usuário saiu,,
