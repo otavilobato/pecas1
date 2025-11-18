@@ -25,4 +25,4 @@ data_hora,usuario,acao,detalhes,antes,depois
 2025-11-17 15:53:16,rafaell,CADASTRO,FRU DF17110,,"{""UF"": ""DF"", ""FRU"": ""DF17110"", ""SUB1"": ""125200"", ""SUB2"": """", ""SUB3"": """", ""DESCRICAO"": ""T"", ""MAQUINAS"": ""T"", ""CLIENTE"": ""T - (T 30/11/26_24H) - DF"", ""DATA_FIM"": ""30/11/26"", ""SLA"": ""24H"", ""DATA_VERIFICACAO"": ""17/11/25"", ""STATUS"": ""DENTRO""}"
 2025-11-17 16:06:23,rafaell,LOGOUT,Usuário saiu,,
 2025-11-17 19:47:57,gladeira,LOGIN,Login bem-sucedido,,
-2025-11-18 12:43:35,rafaell,CADASTRO,FRU DF18110,,"{""UF"": ""DF"", ""FRU"": ""DF18110"", ""SUB1"": ""0943000"", ""SUB2"": """", ""SUB3"": """", ""DESCRICAO"": ""T"", ""MAQUINAS"": ""T"", ""CLIENTE"": ""T - (T 01/11/25_24H) - DF"", ""DATA_FIM"": ""01/11/25"", ""SLA"": ""24H"", ""DATA_VERIFICACAO"": ""18/11/25"", ""STATUS"": ""DENTRO""}"
+2025-11-18 12:45:06,rafaell,EXPORTACAO_RELATORIO_VENCIDAS,Exportou relatório vencidas (5 linhas),,
