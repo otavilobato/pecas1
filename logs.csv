@@ -33,3 +33,4 @@ data_hora,usuario,acao,detalhes,antes,depois
 2025-11-19 12:55:28,rafaell,LOGIN,Login bem-sucedido,,
 2025-11-19 13:09:53,rafaell,LOGIN,Login bem-sucedido,,
 2025-11-19 14:06:49,gladeira,LOGOUT,Usuário saiu,,
+2025-11-19 14:29:55,rrocha,LOGIN_FAIL,Tentativa de login falhou,"{""usuario"": ""rrocha""}",
