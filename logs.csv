@@ -31,4 +31,4 @@ data_hora,usuario,acao,detalhes,antes,depois
 2025-11-19 12:38:16,olobato,LOGIN,Login bem-sucedido,,
 2025-11-19 12:43:40,rafaell,LOGIN,Login bem-sucedido,,
 2025-11-19 12:55:28,rafaell,LOGIN,Login bem-sucedido,,
-2025-11-19 13:05:41,rafaell,CADASTRO,FRU DF19110,,"{""UF"": ""DF"", ""FRU"": ""DF19110"", ""SUB1"": ""1005000"", ""SUB2"": """", ""SUB3"": """", ""DESCRICAO"": ""X"", ""MAQUINAS"": ""X"", ""CLIENTE"": ""X - (X 01/11/25_12H) - DF"", ""DATA_FIM"": ""01/11/25"", ""SLA"": ""12H"", ""DATA_VERIFICACAO"": ""19/11/25"", ""STATUS"": ""DENTRO""}"
+2025-11-19 13:06:38,rafaell,LOGIN,Login bem-sucedido,,
