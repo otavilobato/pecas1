@@ -80,7 +80,7 @@ def login_screen():
 
 def cadastro_screen():
 
-    st.title("📄 Cadastro de Peças (Criptografado)")
+    st.title("📄 Cadastro de Peças")
 
     UF = st.selectbox("UF", ["AM", "PA", "RR", "RO", "AC", "AP"])
     FRU = st.text_input("FRU")
@@ -133,3 +133,4 @@ if not st.session_state["logged"]:
     login_screen()
 else:
     cadastro_screen()
+
