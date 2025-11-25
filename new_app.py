@@ -15,7 +15,6 @@ KDF_ITERATIONS = 200_000
 SALT_SIZE = 16
 
 
-# ----- Deriva chave (igual web e local) -----
 def derive_key_from_password(password: str, salt: bytes) -> bytes:
     password_bytes = password.encode('utf-8')
     kdf = PBKDF2HMAC(
@@ -29,7 +28,6 @@ def derive_key_from_password(password: str, salt: bytes) -> bytes:
     return base64.urlsafe_b64encode(key)
 
 
-# ----- Converte DF → Excel -----
 def dataframe_to_excel_bytes(df: pd.DataFrame) -> bytes:
     bio = BytesIO()
     with pd.ExcelWriter(bio, engine='openpyxl') as w:
@@ -37,13 +35,11 @@ def dataframe_to_excel_bytes(df: pd.DataFrame) -> bytes:
     return bio.getvalue()
 
 
-# ----- Converte Excel → DF -----
 def excel_bytes_to_dataframe(b: bytes) -> pd.DataFrame:
     bio = BytesIO(b)
     return pd.read_excel(bio)
 
 
-# ----- Criptografa bytes -----
 def encrypt_bytes_with_password(plain_bytes: bytes, password: str) -> bytes:
     salt = os.urandom(SALT_SIZE)
     key = derive_key_from_password(password, salt)
@@ -52,7 +48,6 @@ def encrypt_bytes_with_password(plain_bytes: bytes, password: str) -> bytes:
     return salt + token
 
 
-# ----- Descriptografa bytes -----
 def decrypt_bytes_with_password(enc_bytes: bytes, password: str) -> bytes:
     salt = enc_bytes[:SALT_SIZE]
     token = enc_bytes[SALT_SIZE:]
@@ -61,7 +56,7 @@ def decrypt_bytes_with_password(enc_bytes: bytes, password: str) -> bytes:
     return f.decrypt(token)
 
 
-# ======== GitHub Helpers ========
+# ======== GitHub helpers ========
 def get_file_from_github(g, owner, repo_name, path):
     repo = g.get_repo(f"{owner}/{repo_name}")
     try:
@@ -96,15 +91,60 @@ st.title("Cadastro seguro — dados criptografados no GitHub")
 
 
 # -------- Config do secrets --------
+AUTH_USERS = st.secrets["auth"]     # <-- Dicionário com username: senha
 GITHUB_TOKEN = st.secrets["github_token"]
 GITHUB_OWNER = st.secrets["github_owner"]
 GITHUB_REPO = st.secrets["github_repo"]
-ENC_PATH = st.secrets["enc_filename"]  # ex.: "dados_enc/dados.enc"
+ENC_PATH = st.secrets["enc_filename"]
 MASTER_PASSWORD = st.secrets["master_password"]
 
 g = Github(GITHUB_TOKEN)
 
-# --------- Formulário ---------
+
+# ============================================================
+#                      TELA DE LOGIN
+# ============================================================
+
+if "logged" not in st.session_state:
+    st.session_state.logged = False
+
+if "username" not in st.session_state:
+    st.session_state.username = None
+
+if not st.session_state.logged:
+    st.subheader("🔐 Acesso Restrito")
+
+    username = st.text_input("Usuário:")
+    senha = st.text_input("Senha:", type="password")
+
+    if st.button("Entrar"):
+        if username in AUTH_USERS and senha == AUTH_USERS[username]:
+            st.session_state.logged = True
+            st.session_state.username = username
+            st.success(f"Bem-vindo, {username}!")
+            st.rerun()
+        else:
+            st.error("❌ Usuário ou senha incorretos.")
+
+    st.stop()
+
+
+# ============================================================
+#                 BOTÃO LOGOUT (opcional)
+# ============================================================
+
+if st.button("Sair"):
+    st.session_state.logged = False
+    st.session_state.username = None
+    st.rerun()
+
+
+# ============================================================
+#                   FORMULÁRIO DE CADASTRO
+# ============================================================
+
+st.write(f"👤 Usuário logado: **{st.session_state.username}**")
+
 with st.form("cadastro"):
     nome = st.text_input("Nome")
     email = st.text_input("Email")
@@ -119,10 +159,13 @@ with st.form("cadastro"):
 if enviar:
     st.info("Processando...")
 
-    # cria registro
-    nova_linha = {"Nome": nome, "Email": email, "Valor": valor}
+    nova_linha = {
+        "Nome": nome,
+        "Email": email,
+        "Valor": valor,
+        "Cadastrado_por": st.session_state.username
+    }
 
-    # lê arquivo criptografado existente (se houver)
     arquivo_bruto = read_raw_file_bytes_from_github(
         g, GITHUB_OWNER, GITHUB_REPO, ENC_PATH
     )
@@ -134,26 +177,19 @@ if enviar:
             xlsx_bytes = decrypt_bytes_with_password(arquivo_bruto, MASTER_PASSWORD)
             df_old = excel_bytes_to_dataframe(xlsx_bytes)
             df = pd.concat([df_old, pd.DataFrame([nova_linha])], ignore_index=True)
-
         except Exception:
-            st.error("Erro ao descriptografar arquivo existente no GitHub.")
+            st.error("Erro ao descriptografar o arquivo existente.")
             st.stop()
 
-    # recria Excel
     xlsx_bytes = dataframe_to_excel_bytes(df)
-
-    # re-encripta
     enc_bytes = encrypt_bytes_with_password(xlsx_bytes, MASTER_PASSWORD)
 
-    # salva no GitHub
     try:
         commit_file_to_github(
             g, GITHUB_OWNER, GITHUB_REPO, ENC_PATH,
             enc_bytes,
-            message=f"Atualização criptografada - {nome}"
+            message=f"Atualização criptografada por {st.session_state.username}"
         )
-
-        st.success("✔ Dados salvos com segurança no GitHub (criptografados).")
-
+        st.success("✔ Dados salvos com segurança no GitHub.")
     except Exception as e:
         st.error(f"Erro ao salvar no GitHub: {e}")
