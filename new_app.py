@@ -144,106 +144,70 @@ def renovar_contrato_screen():
             st.error("Erro ao atualizar dados.")
 
 # =========================
-# TELA DE CADASTRO
+# FORMULÁRIO DE CADASTRO
 # =========================
+elif menu == "Cadastro":
+    st.header("Cadastro de Peças")
 
-def cadastro_screen():
+    col_fru, col_s1, col_s2, col_s3 = st.columns(4)
 
-    st.title("📄 Cadastro de Peças")
+    fru = col_fru.text_input("FRU (7 caracteres)*").upper()
+    sub1 = col_s1.text_input("SUB 1 (7 caracteres - opcional)").upper()
+    sub2 = col_s2.text_input("SUB 2 (7 caracteres - opcional)").upper()
+    sub3 = col_s3.text_input("SUB 3 (7 caracteres - opcional)").upper()
 
-    UF = st.selectbox("UF", ["AM", "PA", "RR", "RO", "AC", "AP"])
-    FRU = st.text_input("FRU (7 caracteres obrigatórios)")
-    SUB1 = st.text_input("SUB1 (opcional, 7 caracteres)")
-    SUB2 = st.text_input("SUB2 (opcional, 7 caracteres)")
-    SUB3 = st.text_input("SUB3 (opcional, 7 caracteres)")
-    DESCRICAO = st.text_input("DESCRIÇÃO")
-    MAQUINAS = st.text_input("MÁQUINAS")
-    CLIENTE_ORIG = st.text_input("Cliente")
-    SERIAL = st.text_input("Serial")
-    DATA_FIM = st.date_input("Data Fim")
-    SLA = st.text_input("SLA")
+    col_a, col_b = st.columns(2)
+    cliente_base = col_a.text_input("CLIENTE *").upper()
+    serial = col_b.text_input("SERIAL *").upper()
 
-    if st.button("Salvar"):
+    col_c, col_d = st.columns(2)
+    data_fim_sla = col_c.date_input("DATA FIM SLA *")
+    uf = col_d.text_input("UF *").upper()
 
-        # ==============================
-        # CAIXA ALTA AUTOMÁTICA
-        # ==============================
-        FRU = FRU.upper()
-        SUB1 = SUB1.upper()
-        SUB2 = SUB2.upper()
-        SUB3 = SUB3.upper()
-        DESCRICAO = DESCRICAO.upper()
-        MAQUINAS = MAQUINAS.upper()
-        CLIENTE_ORIG = CLIENTE_ORIG.upper()
-        SERIAL = SERIAL.upper()
-        SLA = SLA.upper()
+    # Montagem automática do campo CLIENTE FINAL  
+    cliente = f"{cliente_base}(SERIAL_{serial}_{data_fim_sla}){uf}"
 
-        CLIENTE_FINAL = f"{CLIENTE_ORIG}({SERIAL}_{DATA_FIM}_{SLA}){UF}"
+    st.write("Cliente gerado automaticamente:")
+    st.code(cliente)
 
-        # ==============================
-        # VALIDAÇÕES
-        # ==============================
+    # Validações
+    erros = []
 
-        # FRU obrigatório e 7 caracteres
-        if len(FRU) != 7:
-            st.error("❌ O campo FRU deve ter exatamente 7 caracteres.")
-            return
+    if fru.strip() == "" or len(fru) != 7:
+        erros.append("FRU deve ter exatamente 7 caracteres.")
 
-        # SUB1/2/3 opcionais mas, se preenchidos, 7 chars
-        for nome, valor in [("SUB1", SUB1), ("SUB2", SUB2), ("SUB3", SUB3)]:
-            if valor != "" and len(valor) != 7:
-                st.error(f"❌ O campo {nome} deve ter exatamente 7 caracteres quando preenchido.")
-                return
+    for nome, campo in [("SUB 1", sub1), ("SUB 2", sub2), ("SUB 3", sub3)]:
+        if campo.strip() != "" and len(campo) != 7:
+            erros.append(f"{nome} deve ter exatamente 7 caracteres quando preenchido.")
 
-        # Campos obrigatórios
-        campos_obrigatorios = {
-            "DESCRIÇÃO": DESCRICAO,
-            "MÁQUINAS": MAQUINAS,
-            "Cliente": CLIENTE_ORIG,
-            "Serial": SERIAL,
-            "SLA": SLA
-        }
+    if cliente_base.strip() == "":
+        erros.append("CLIENTE é obrigatório.")
+    if serial.strip() == "":
+        erros.append("SERIAL é obrigatório.")
+    if uf.strip() == "":
+        erros.append("UF é obrigatório.")
 
-        for nome, valor in campos_obrigatorios.items():
-            if valor == "":
-                st.error(f"❌ O campo {nome} é obrigatório.")
-                return
+    if erros:
+        st.error("⚠ Erros encontrados:\n" + "\n".join(erros))
+    else:
+        if st.button("Cadastrar"):
+            nova_linha = {
+                "FRU": fru,
+                "SUB1": sub1,
+                "SUB2": sub2,
+                "SUB3": sub3,
+                "CLIENTE": cliente,
+                "SERIAL": serial,
+                "DATA_FIM_SLA": str(data_fim_sla),
+                "UF": uf
+            }
 
-        # ==============================
-        # CARREGAR EXCEL
-        # ==============================
+            df_saldo = df_saldo.append(nova_linha, ignore_index=True)
 
-        df = github_read_excel()
-        if df is None:
-            return
+            st.success("Peça cadastrada com sucesso!")
 
-        # ==============================
-        # MONTAR REGISTRO
-        # ==============================
-
-        new_row = {
-            "UF": hash_value(UF),
-            "FRU": hash_value(FRU),
-            "SUB1": hash_value(SUB1),
-            "SUB2": hash_value(SUB2),
-            "SUB3": hash_value(SUB3),
-            "DESCRICAO": hash_value(DESCRICAO),
-            "MAQUINAS": hash_value(MAQUINAS),
-            "CLIENTE": hash_value(CLIENTE_FINAL),
-            "DATA_FIM": hash_value(str(DATA_FIM)),
-            "SLA": hash_value(SLA)
-        }
-
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-
-        # ==============================
-        # SALVAR NO GITHUB
-        # ==============================
-
-        if github_write_excel(df):
-            st.success("✔ Registro salvo com sucesso!")
-        else:
-            st.error("❌ Erro ao salvar no GitHub.")
+            # Salvar no GitHub
+            save_to_github(df_saldo)
 
 # =========================
 # MENU LATERAL
@@ -280,6 +244,7 @@ else:
 
     elif opcao == "Sair":
         logout()
+
 
 
 
