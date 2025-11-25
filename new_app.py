@@ -149,13 +149,13 @@ def renovar_contrato_screen():
 
 def cadastro_screen():
 
-    st.title("📄 Cadastro de Peças")
+    st.title("📄 Cadastro de Peças (Criptografado)")
 
     UF = st.selectbox("UF", ["AM", "PA", "RR", "RO", "AC", "AP"])
-    FRU = st.text_input("FRU")
-    SUB1 = st.text_input("SUB1")
-    SUB2 = st.text_input("SUB2")
-    SUB3 = st.text_input("SUB3")
+    FRU = st.text_input("FRU (7 caracteres obrigatórios)")
+    SUB1 = st.text_input("SUB1 (opcional, 7 caracteres)")
+    SUB2 = st.text_input("SUB2 (opcional, 7 caracteres)")
+    SUB3 = st.text_input("SUB3 (opcional, 7 caracteres)")
     DESCRICAO = st.text_input("DESCRIÇÃO")
     MAQUINAS = st.text_input("MÁQUINAS")
     CLIENTE_ORIG = st.text_input("Cliente")
@@ -163,13 +163,63 @@ def cadastro_screen():
     DATA_FIM = st.date_input("Data Fim")
     SLA = st.text_input("SLA")
 
-    CLIENTE_FINAL = f"{CLIENTE_ORIG}({SERIAL}_{DATA_FIM}_{SLA}){UF}"
-
     if st.button("Salvar"):
+
+        # ==============================
+        # CAIXA ALTA AUTOMÁTICA
+        # ==============================
+        FRU = FRU.upper()
+        SUB1 = SUB1.upper()
+        SUB2 = SUB2.upper()
+        SUB3 = SUB3.upper()
+        DESCRICAO = DESCRICAO.upper()
+        MAQUINAS = MAQUINAS.upper()
+        CLIENTE_ORIG = CLIENTE_ORIG.upper()
+        SERIAL = SERIAL.upper()
+        SLA = SLA.upper()
+
+        CLIENTE_FINAL = f"{CLIENTE_ORIG}({SERIAL}_{DATA_FIM}_{SLA}){UF}"
+
+        # ==============================
+        # VALIDAÇÕES
+        # ==============================
+
+        # FRU obrigatório e 7 caracteres
+        if len(FRU) != 7:
+            st.error("❌ O campo FRU deve ter exatamente 7 caracteres.")
+            return
+
+        # SUB1/2/3 opcionais mas, se preenchidos, 7 chars
+        for nome, valor in [("SUB1", SUB1), ("SUB2", SUB2), ("SUB3", SUB3)]:
+            if valor != "" and len(valor) != 7:
+                st.error(f"❌ O campo {nome} deve ter exatamente 7 caracteres quando preenchido.")
+                return
+
+        # Campos obrigatórios
+        campos_obrigatorios = {
+            "DESCRIÇÃO": DESCRICAO,
+            "MÁQUINAS": MAQUINAS,
+            "Cliente": CLIENTE_ORIG,
+            "Serial": SERIAL,
+            "SLA": SLA
+        }
+
+        for nome, valor in campos_obrigatorios.items():
+            if valor == "":
+                st.error(f"❌ O campo {nome} é obrigatório.")
+                return
+
+        # ==============================
+        # CARREGAR EXCEL
+        # ==============================
 
         df = github_read_excel()
         if df is None:
             return
+
+        # ==============================
+        # MONTAR REGISTRO
+        # ==============================
 
         new_row = {
             "UF": hash_value(UF),
@@ -186,10 +236,15 @@ def cadastro_screen():
 
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
+        # ==============================
+        # SALVAR NO GITHUB
+        # ==============================
+
         if github_write_excel(df):
             st.success("✔ Registro salvo com sucesso!")
         else:
-            st.error("Erro ao salvar no GitHub.")
+            st.error("❌ Erro ao salvar no GitHub.")
+
 # =========================
 # MENU LATERAL
 # =========================
@@ -225,5 +280,6 @@ else:
 
     elif opcao == "Sair":
         logout()
+
 
 
