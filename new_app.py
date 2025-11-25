@@ -54,6 +54,40 @@ def github_write_excel(df):
 
     return put_r.status_code in (200, 201)
 
+def gerar_relatorio_screen():
+    st.title("📄 Gerar Relatório de Peças Vencidas")
+
+    df = github_read_excel()
+    if df is None:
+        return
+
+    hoje = datetime.now().date()
+
+    vencidos = df[df["DATA_FIM"].apply(lambda x: x < str(hoje))]
+
+    if len(vencidos) == 0:
+        st.info("Nenhuma peça vencida para gerar relatório.")
+        return
+
+    # Gera o conteúdo do TXT
+    linhas = []
+    for _, row in vencidos.iterrows():
+        linha = f"{row['UF']} | {row['FRU']} | {row['CLIENTE']} | {row['DATA_FIM']}"
+        linhas.append(linha)
+
+    txt_content = "\n".join(linhas)
+
+    st.download_button(
+        "📥 Baixar Relatório TXT",
+        txt_content,
+        file_name="pecas_vencidas.txt",
+        mime="text/plain"
+    )
+def logout():
+    st.session_state["logged"] = False
+    st.rerun()
+
+
 # =========================
 # TELA DE LOGIN
 # =========================
@@ -73,6 +107,41 @@ def login_screen():
             st.rerun()
         else:
             st.error("Usuário ou senha incorretos.")
+def renovar_contrato_screen():
+    st.title("🛠 Renovar Contrato")
+
+    df = github_read_excel()
+    if df is None:
+        return
+
+    # converter DATA_FIM criptografada → texto
+    df["DATA_FIM_DEC"] = df["DATA_FIM"].apply(lambda x: x)
+
+    hoje = datetime.now().date()
+    vencidos = df[df["DATA_FIM_DEC"] < str(hoje)]
+
+    st.subheader("Peças vencidas")
+    st.dataframe(vencidos)
+
+    if len(vencidos) == 0:
+        st.info("Nenhuma peça vencida encontrada.")
+        return
+
+    # Selecionar qual linha editar
+    idx = st.selectbox(
+        "Selecione um registro para renovação",
+        vencidos.index.tolist()
+    )
+
+    nova_data = st.date_input("Nova data de validade")
+
+    if st.button("Salvar Renovação"):
+        df.at[idx, "DATA_FIM"] = hash_value(str(nova_data))
+
+        if github_write_excel(df):
+            st.success("✔ Contrato renovado com sucesso!")
+        else:
+            st.error("Erro ao atualizar dados.")
 
 # =========================
 # TELA DE CADASTRO
@@ -121,9 +190,19 @@ def cadastro_screen():
             st.success("✔ Registro salvo com sucesso!")
         else:
             st.error("Erro ao salvar no GitHub.")
+# =========================
+# MENU LATERAL
+# =========================
+
+def sidebar_menu():
+    menu = st.sidebar.radio(
+        "📌 Navegação",
+        ["Cadastro", "Renovar Contrato", "Gerar Relatório", "Sair"]
+    )
+    return menu
 
 # =========================
-# GERENCIADOR PRINCIPAL
+# ÁREA LOGADA
 # =========================
 
 if "logged" not in st.session_state:
@@ -131,6 +210,20 @@ if "logged" not in st.session_state:
 
 if not st.session_state["logged"]:
     login_screen()
+
 else:
-    cadastro_screen()
+    opcao = sidebar_menu()
+
+    if opcao == "Cadastro":
+        cadastro_screen()
+
+    elif opcao == "Renovar Contrato":
+        renovar_contrato_screen()
+
+    elif opcao == "Gerar Relatório":
+        gerar_relatorio_screen()
+
+    elif opcao == "Sair":
+        logout()
+
 
