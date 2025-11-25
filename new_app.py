@@ -149,7 +149,7 @@ def renovar_contrato_screen():
 
 def cadastro_screen():
 
-    st.title("📄 Cadastro de Peças (Criptografado)")
+    st.title("📄 Cadastro de Peças")
 
     UF = st.selectbox("UF", ["AM", "PA", "RR", "RO", "AC", "AP"])
     FRU = st.text_input("FRU (7 caracteres obrigatórios)")
@@ -280,6 +280,7 @@ else:
 
     elif opcao == "Sair":
         logout()
+
 
 
 
